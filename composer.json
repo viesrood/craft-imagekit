@@ -23,9 +23,26 @@
         "craftcms/cms": "^5.0.0",
         "imagekit/imagekit": "^4.0"
     },
+    "require-dev": {
+        "phpunit/phpunit": "^10.5"
+    },
     "autoload": {
         "psr-4": {
             "viesrood\\imagekit\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "viesrood\\imagekit\\tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit"
+    },
+    "config": {
+        "allow-plugins": {
+            "yiisoft/yii2-composer": true,
+            "craftcms/plugin-installer": true
         }
     },
     "extra": {
