@@ -1,5 +1,18 @@
 # Release Notes for ImageKit Toolkit
 
+## 1.1.0 - 2026-07-21
+
+### Added
+
+- The `imagekit()` Twig helper (function + filter) and `imagekit_srcset()` now accept a Craft
+  `Asset` as the source, in addition to a string path/URL.
+- Focal-point-aware cropping for asset sources: a convenience `mode` option (`crop`/`fit`) plus
+  `width`/`height`. In `crop` mode a non-centered `asset.focalPoint` produces a chained
+  `c-force` -> `cm-extract` transform around the focal point; otherwise a centered crop.
+- Asset sources return `''` for a `null` asset and fall back to a native Craft transform URL when
+  the URL endpoint is not configured.
+- `x` and `y` transformation options (for manual extract crops).
+
 ## 1.0.0 - 2026-07-21
 
 ### Added

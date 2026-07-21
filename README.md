@@ -57,12 +57,15 @@ and `fill` as the pad color for letterbox).
 
 ## Twig helper
 
-`imagekit(source, options)` builds a transformation URL. `source` may be a **Media Library path**
-(`/folder/photo.jpg`) or an existing **public URL** (web proxy).
+`imagekit(source, options)` builds a transformation URL. `source` may be a **Craft asset**, a
+**Media Library path** (`/folder/photo.jpg`) or an existing **public URL** (web proxy).
 
 ```twig
-{# as a function #}
+{# as a function, on a Media Library path #}
 <img src="{{ imagekit('/hero.jpg', { width: 800, format: 'auto', quality: 75 }) }}" alt="">
+
+{# on a Craft asset - focal-point-aware crop #}
+<img src="{{ imagekit(entry.image.one(), { mode: 'crop', width: 720, height: 480, format: 'webp' }) }}" alt="">
 
 {# as a filter, on an existing URL #}
 <img src="{{ 'https://example.com/photo.jpg' | imagekit({ width: 400 }) }}" alt="">
@@ -76,10 +79,18 @@ and `fill` as the pad color for letterbox).
 ```
 
 **Options** (friendly name -> ImageKit parameter): `width`/`w`, `height`/`h`, `format`/`f`
-(`auto`/`webp`/`avif`/`jpg`/`png`), `quality`/`q`, `crop`/`c`, `cropMode`/`cm`, `focus`/`fo`,
-`aspectRatio`/`ar`, `dpr`, `blur`/`bl`, `radius`/`r`, `rotation`/`rt`, `background`/`bg`.
-`format` and `quality` fall back to the defaults from the settings.
+(`auto`/`webp`/`avif`/`jpg`/`png`), `quality`/`q`, `crop`/`c`, `cropMode`/`cm`, `x`, `y`,
+`focus`/`fo`, `aspectRatio`/`ar`, `dpr`, `blur`/`bl`, `radius`/`r`, `rotation`/`rt`,
+`background`/`bg`. `format` and `quality` fall back to the defaults from the settings.
 `signed: true` (plus an optional `expire: <seconds>`) signs the URL (HMAC-SHA1).
+
+**Craft asset source.** When `source` is a Craft `Asset`, the helper additionally understands the
+convenience option `mode`: `'crop'` (default; exact `width` x `height`, filling and cropping) or
+`'fit'` (fits within `width` x `height`, no cropping). In `crop` mode the asset's **focal point**
+is honored - if it deviates from the center, the crop is built as a chained
+`c-force` -> `cm-extract` transform around the focal point (otherwise a centered crop). A `null`
+asset returns `''`, and when the URL endpoint is not configured the helper falls back to a native
+Craft transform URL.
 
 `f-auto` automatically serves WebP/AVIF to browsers that support it, otherwise the original.
 

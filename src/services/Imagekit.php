@@ -6,6 +6,7 @@ namespace viesrood\imagekit\services;
 
 use Craft;
 use craft\base\Component;
+use craft\elements\Asset;
 use craft\helpers\App;
 use ImageKit\ImageKit as ImageKitClient;
 use viesrood\imagekit\models\Settings;
@@ -41,6 +42,8 @@ class Imagekit extends Component
         'c' => 'crop',
         'cropMode' => 'cropMode',
         'cm' => 'cropMode',
+        'x' => 'x',
+        'y' => 'y',
         'focus' => 'focus',
         'fo' => 'focus',
         'aspectRatio' => 'aspectRatio',
@@ -59,10 +62,207 @@ class Imagekit extends Component
     /**
      * Bouw een ImageKit-transformatie-URL.
      *
-     * @param string $source Media Library-pad (bv. /map/foto.jpg) of een absolute (externe) URL.
+     * Accepteert zowel een Craft {@see Asset} als een string-bron:
+     * - Asset: de publieke asset-URL wordt tot een pad t.o.v. het endpoint herleid en
+     *   crops honoreren het per-asset focuspunt ({@see focalCropTransformation()}).
+     *   Ondersteunt de "vriendelijke" opties `mode` (`crop`/`fit`), `width`, `height`,
+     *   plus alles uit {@see OPTION_MAP} (quality/format/…). Null asset -> ''. Zonder
+     *   geconfigureerd endpoint valt hij terug op een native Craft-transform-URL.
+     * - string: Media Library-pad (bv. /map/foto.jpg) of een absolute (externe) URL.
+     *
+     * @param Asset|string|null $source
+     * @param array<string,mixed> $options Transformatie- en URL-opties (zie OPTION_MAP + mode/signed/expire).
+     */
+    public function url(Asset|string|null $source, array $options = []): string
+    {
+        if ($source instanceof Asset) {
+            return $this->urlForAsset($source, $options);
+        }
+
+        if ($source === null || $source === '') {
+            return '';
+        }
+
+        return $this->urlForString($source, $options);
+    }
+
+    /**
+     * Bouw een transformatie-URL voor een Craft-asset (focuspunt-bewust).
+     *
+     * @param array<string,mixed> $options
+     */
+    private function urlForAsset(Asset $asset, array $options): string
+    {
+        $settings = $this->settings();
+
+        // Escape-hatch: geen endpoint geconfigureerd -> native Craft-transform (net als de
+        // oude custom module). Opties zijn 1-op-1 een Craft-transformdefinitie (mode/width/
+        // height/quality/format).
+        if (App::parseEnv($settings->urlEndpoint) === '') {
+            return $asset->getUrl($this->assetTransformOptions($options)) ?? '';
+        }
+
+        // signed/expire uit de opties lichten; de rest zijn transformaties.
+        $signed = array_key_exists('signed', $options)
+            ? (bool)$options['signed']
+            : $settings->signUrls;
+        $expire = (int)($options['expire'] ?? $options['expireSeconds'] ?? $settings->signedExpire);
+        unset($options['signed'], $options['expire'], $options['expireSeconds']);
+
+        // Structurele opties apart houden; de rest (quality/format/…) rijdt mee op de
+        // laatste transform-stap.
+        $mode = (string)($options['mode'] ?? 'crop');
+        $targetW = (int)($options['width'] ?? 0);
+        $targetH = (int)($options['height'] ?? 0);
+        unset($options['mode'], $options['width'], $options['height']);
+
+        $output = $this->buildTransformation($options, $settings);
+        $transformation = $this->assetTransformation($asset, $mode, $targetW, $targetH, $output);
+
+        $params = [
+            'path' => $this->assetPath($asset, $settings),
+            'transformation' => $transformation,
+        ];
+
+        if ($signed) {
+            $params['signed'] = true;
+            if ($expire > 0) {
+                $params['expireSeconds'] = $expire;
+            }
+        }
+
+        return $this->urlClient()->url($params);
+    }
+
+    /**
+     * Vertaal `mode`/`width`/`height` naar een (mogelijk geketende) ImageKit-transformatie.
+     *
+     * @param array<string,string> $output Reeds gemapte output-opties (quality/format/…).
+     * @return array<int,array<string,string>>
+     */
+    private function assetTransformation(Asset $asset, string $mode, int $targetW, int $targetH, array $output): array
+    {
+        if ($mode === 'fit') {
+            $t = $output;
+            if ($targetW) {
+                $t['width'] = (string)$targetW;
+            }
+            if ($targetH) {
+                $t['height'] = (string)$targetH;
+            }
+            $t['crop'] = 'at_max';
+            return [$t];
+        }
+
+        if ($mode === 'crop' && $targetW && $targetH) {
+            return $this->focalCropTransformation($asset, $targetW, $targetH, $output);
+        }
+
+        // Overige modes / ontbrekende dimensie: gewone resize.
+        $t = $output;
+        if ($targetW) {
+            $t['width'] = (string)$targetW;
+        }
+        if ($targetH) {
+            $t['height'] = (string)$targetH;
+        }
+        return [$t];
+    }
+
+    /**
+     * Focuspunt-bewuste crop naar exact $targetW x $targetH.
+     *
+     * Zonder (relevant) focuspunt: gewone crop-tot-vullend (ImageKit default maintain_ratio,
+     * gecentreerd). Met focuspunt: twee-staps transform - eerst opschalen tot dekking
+     * (`c-force`), dan `cm-extract` rondom het focuspunt. Poort van de oude custom module.
+     *
+     * @param array<string,string> $output
+     * @return array<int,array<string,string>>
+     */
+    private function focalCropTransformation(Asset $asset, int $targetW, int $targetH, array $output): array
+    {
+        $origW = (int)$asset->width;
+        $origH = (int)$asset->height;
+        $fp = $asset->getHasFocalPoint() ? $asset->getFocalPoint() : null;
+
+        $hasFocalPoint = is_array($fp) && $origW && $origH
+            && (abs($fp['x'] - 0.5) > 0.02 || abs($fp['y'] - 0.5) > 0.02);
+
+        if (!$hasFocalPoint) {
+            $t = $output;
+            $t['width'] = (string)$targetW;
+            $t['height'] = (string)$targetH;
+            return [$t];
+        }
+
+        $scale = max($targetW / $origW, $targetH / $origH);
+        $scaledW = (int)round($origW * $scale);
+        $scaledH = (int)round($origH * $scale);
+
+        $fpX = $fp['x'] * $scaledW;
+        $fpY = $fp['y'] * $scaledH;
+
+        $cropX = (int)max(0, min($scaledW - $targetW, round($fpX - $targetW / 2)));
+        $cropY = (int)max(0, min($scaledH - $targetH, round($fpY - $targetH / 2)));
+
+        $step1 = [
+            'width' => (string)$scaledW,
+            'height' => (string)$scaledH,
+            'crop' => 'force',
+        ];
+        $step2 = array_merge([
+            'cropMode' => 'extract',
+            'x' => (string)$cropX,
+            'y' => (string)$cropY,
+            'width' => (string)$targetW,
+            'height' => (string)$targetH,
+        ], $output);
+
+        return [$step1, $step2];
+    }
+
+    /**
+     * Herleid het endpoint-relatieve pad van een asset.
+     */
+    private function assetPath(Asset $asset, Settings $settings): string
+    {
+        $assetUrl = (string)$asset->getUrl();
+
+        // Al onder ons eigen ImageKit-endpoint: neem de rest als Media Library-pad.
+        $endpoint = rtrim(App::parseEnv($settings->urlEndpoint), '/');
+        if ($endpoint !== '' && str_starts_with($assetUrl, $endpoint . '/')) {
+            return '/' . ltrim(substr($assetUrl, strlen($endpoint) + 1), '/');
+        }
+
+        // Anders: strip het site-origin -> pad t.o.v. de origin (ImageKit-endpoint met origin).
+        $siteUrl = rtrim((string)App::env('PRIMARY_SITE_URL'), '/');
+        if ($siteUrl !== '' && str_starts_with($assetUrl, $siteUrl)) {
+            return '/' . ltrim(substr($assetUrl, strlen($siteUrl)), '/');
+        }
+
+        // Fallback: pad uit de URL parsen.
+        $path = parse_url($assetUrl, PHP_URL_PATH) ?: $assetUrl;
+        return '/' . ltrim($path, '/');
+    }
+
+    /**
+     * Maak van de vriendelijke opties een Craft-transformdefinitie (voor de native fallback).
+     *
+     * @param array<string,mixed> $options
+     * @return array<string,mixed>
+     */
+    private function assetTransformOptions(array $options): array
+    {
+        unset($options['signed'], $options['expire'], $options['expireSeconds']);
+        return $options;
+    }
+
+    /**
+     * Bouw een transformatie-URL voor een string-bron (pad of externe URL).
+     *
      * @param array<string,mixed> $options Transformatie- en URL-opties (zie OPTION_MAP + signed/expire).
      */
-    public function url(string $source, array $options = []): string
+    private function urlForString(string $source, array $options = []): string
     {
         $settings = $this->settings();
         $client = $this->urlClient();
@@ -110,10 +310,11 @@ class Imagekit extends Component
     /**
      * Bouw een srcset-string voor responsive afbeeldingen.
      *
+     * @param Asset|string $source
      * @param int[] $widths
      * @param array<string,mixed> $options
      */
-    public function srcset(string $source, array $widths, array $options = []): string
+    public function srcset(Asset|string $source, array $widths, array $options = []): string
     {
         $parts = [];
         foreach ($widths as $width) {
