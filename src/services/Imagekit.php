@@ -97,8 +97,9 @@ class Imagekit extends Component
 
         // Escape-hatch: geen endpoint geconfigureerd -> native Craft-transform (net als de
         // oude custom module). Opties zijn 1-op-1 een Craft-transformdefinitie (mode/width/
-        // height/quality/format).
-        if (App::parseEnv($settings->urlEndpoint) === '') {
+        // height/quality/format). parseEnv() geeft null terug voor een niet-bestaande env-var,
+        // dus niet alleen op '' controleren.
+        if ((string)(App::parseEnv($settings->urlEndpoint) ?? '') === '') {
             return $asset->getUrl($this->assetTransformOptions($options)) ?? '';
         }
 
@@ -229,7 +230,7 @@ class Imagekit extends Component
         $assetUrl = (string)$asset->getUrl();
 
         // Al onder ons eigen ImageKit-endpoint: neem de rest als Media Library-pad.
-        $endpoint = rtrim(App::parseEnv($settings->urlEndpoint), '/');
+        $endpoint = rtrim((string)(App::parseEnv($settings->urlEndpoint) ?? ''), '/');
         if ($endpoint !== '' && str_starts_with($assetUrl, $endpoint . '/')) {
             return '/' . ltrim(substr($assetUrl, strlen($endpoint) + 1), '/');
         }
@@ -288,7 +289,7 @@ class Imagekit extends Component
         }
 
         if ($this->isAbsoluteUrl($source)) {
-            $endpoint = rtrim(App::parseEnv($settings->urlEndpoint), '/');
+            $endpoint = rtrim((string)(App::parseEnv($settings->urlEndpoint) ?? ''), '/');
             $prefix = $endpoint . '/';
 
             if (str_starts_with($source, $prefix)) {

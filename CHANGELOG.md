@@ -1,5 +1,13 @@
 # Release Notes for ImageKit Toolkit
 
+## 1.1.1 - 2026-07-21
+
+### Fixed
+
+- Asset sources no longer throw a `TypeError` when the URL endpoint is not configured: an
+  undefined `IMAGEKIT_URL_ENDPOINT` (where `App::parseEnv()` returns `null`, not `''`) now
+  correctly triggers the native Craft transform fallback instead of `rtrim(null)`.
+
 ## 1.1.0 - 2026-07-21
 
 ### Added
