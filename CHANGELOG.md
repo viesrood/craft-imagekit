@@ -1,5 +1,12 @@
 # Release Notes for ImageKit Toolkit
 
+## 1.1.2 - 2026-07-21
+
+### Changed
+
+- Re-release of 1.1.1 to work around a Plugin Store packaging hiccup (1.1.1 was picked up by
+  the plugin API but never packaged into the Composer repository). No code changes from 1.1.1.
+
 ## 1.1.1 - 2026-07-21
 
 ### Fixed
