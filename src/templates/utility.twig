@@ -1,0 +1,100 @@
+{# ImageKit-hulpprogramma: upload/URL -> omgezette ImageKit-URL. #}
+{% import "_includes/forms.twig" as forms %}
+
+{% if not configured %}
+    <p class="warning">
+        ImageKit is nog niet geconfigureerd. Zet <code>IMAGEKIT_PUBLIC_KEY</code>,
+        <code>IMAGEKIT_PRIVATE_KEY</code> en <code>IMAGEKIT_URL_ENDPOINT</code> in je
+        <code>.env</code> (of in <code>config/imagekit.php</code>).
+    </p>
+{% endif %}
+
+<form id="imagekit-convert" enctype="multipart/form-data">
+    <p>Upload een afbeelding <em>of</em> plak een bestaande (publieke) URL. Kies daarna de gewenste omzetting.</p>
+
+    {{ forms.field({ label: 'Afbeelding uploaden' }, '<input type="file" name="file" accept="image/*">') }}
+
+    {{ forms.textField({
+        label: 'of bron-URL',
+        instructions: 'Een publieke afbeeldings-URL of een pad in je ImageKit Media Library.',
+        name: 'sourceUrl',
+        placeholder: 'https://... of /map/foto.jpg',
+    }) }}
+
+    <div class="flex">
+        {{ forms.textField({ label: 'Breedte (px)', name: 'width', size: 6, type: 'number' }) }}
+        {{ forms.textField({ label: 'Hoogte (px)', name: 'height', size: 6, type: 'number' }) }}
+        {{ forms.selectField({
+            label: 'Formaat',
+            name: 'format',
+            options: [
+                { label: 'Auto (WebP/AVIF)', value: 'auto' },
+                { label: 'WebP', value: 'webp' },
+                { label: 'AVIF', value: 'avif' },
+                { label: 'JPG', value: 'jpg' },
+                { label: 'PNG', value: 'png' },
+                { label: 'Origineel laten', value: '' },
+            ],
+            value: 'auto',
+        }) }}
+        {{ forms.textField({ label: 'Kwaliteit (1-100)', name: 'quality', size: 4, type: 'number', value: 80 }) }}
+    </div>
+
+    {{ forms.lightswitchField({ label: 'URL ondertekenen (signed)', name: 'signed' }) }}
+
+    <div class="buttons">
+        <button type="submit" class="btn submit">Omzetten</button>
+        <div class="spinner hidden"></div>
+    </div>
+</form>
+
+<div id="imagekit-result" class="hidden" style="margin-top:24px;">
+    <hr>
+    <h2>Resultaat</h2>
+    <p><img id="imagekit-preview" src="" alt="" style="max-width:100%;height:auto;border:1px solid #eee;border-radius:4px;"></p>
+    {{ forms.textField({ label: 'Omgezette ImageKit-URL', id: 'imagekit-url', name: 'resultUrl', readonly: true }) }}
+    {{ forms.textField({ label: 'Media Library-pad (voor imagekit())', id: 'imagekit-path', name: 'resultPath', readonly: true }) }}
+</div>
+
+<p id="imagekit-error" class="error hidden" style="margin-top:16px;"></p>
+
+{% js %}
+(function () {
+    var form = document.getElementById('imagekit-convert');
+    var result = document.getElementById('imagekit-result');
+    var errorEl = document.getElementById('imagekit-error');
+    var spinner = form.querySelector('.spinner');
+
+    form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        errorEl.classList.add('hidden');
+        result.classList.add('hidden');
+        spinner.classList.remove('hidden');
+
+        var data = new FormData(form);
+        data.append(Craft.csrfTokenName, Craft.csrfTokenValue);
+
+        Craft.sendActionRequest('POST', 'imagekit/convert/run', { body: data })
+            .then(function (response) {
+                var d = response.data;
+                if (!d.success) {
+                    errorEl.textContent = d.error || 'Er ging iets mis.';
+                    errorEl.classList.remove('hidden');
+                    return;
+                }
+                document.getElementById('imagekit-preview').src = d.transformedUrl;
+                document.getElementById('imagekit-url').value = d.transformedUrl;
+                document.getElementById('imagekit-path').value = d.filePath || d.originalUrl || '';
+                result.classList.remove('hidden');
+            })
+            .catch(function (err) {
+                var msg = (err && err.response && err.response.data && err.response.data.error) || 'Verzoek mislukt.';
+                errorEl.textContent = msg;
+                errorEl.classList.remove('hidden');
+            })
+            .finally(function () {
+                spinner.classList.add('hidden');
+            });
+    });
+})();
+{% endjs %}

@@ -1,0 +1,73 @@
+{# Alleen-lezen overzicht van de ImageKit-configuratie. #}
+{% import "_includes/forms.twig" as forms %}
+
+<p>
+    De ImageKit-credentials worden uit env-vars gelezen (of uit <code>config/imagekit.php</code>).
+    Zet in je <code>.env</code>:
+</p>
+
+<pre>IMAGEKIT_PUBLIC_KEY=public_...
+IMAGEKIT_PRIVATE_KEY=private_...
+IMAGEKIT_URL_ENDPOINT=https://ik.imagekit.io/&lt;imagekit_id&gt;</pre>
+
+{{ forms.autosuggestField({
+    label: 'Public key',
+    id: 'publicKey',
+    name: 'settings[publicKey]',
+    suggestEnvVars: true,
+    value: settings.publicKey,
+}) }}
+
+{{ forms.autosuggestField({
+    label: 'Private key',
+    id: 'privateKey',
+    name: 'settings[privateKey]',
+    suggestEnvVars: true,
+    value: settings.privateKey,
+}) }}
+
+{{ forms.autosuggestField({
+    label: 'URL-endpoint',
+    id: 'urlEndpoint',
+    name: 'settings[urlEndpoint]',
+    suggestEnvVars: true,
+    value: settings.urlEndpoint,
+}) }}
+
+{{ forms.selectField({
+    label: 'Standaard-formaat',
+    id: 'defaultFormat',
+    name: 'settings[defaultFormat]',
+    options: [
+        { label: 'Auto (WebP/AVIF)', value: 'auto' },
+        { label: 'WebP', value: 'webp' },
+        { label: 'AVIF', value: 'avif' },
+        { label: 'JPG', value: 'jpg' },
+        { label: 'PNG', value: 'png' },
+        { label: 'Geen', value: '' },
+    ],
+    value: settings.defaultFormat,
+}) }}
+
+{{ forms.textField({
+    label: 'Standaard-kwaliteit (1-100)',
+    id: 'defaultQuality',
+    name: 'settings[defaultQuality]',
+    type: 'number',
+    size: 4,
+    value: settings.defaultQuality,
+}) }}
+
+{{ forms.lightswitchField({
+    label: 'URL\'s standaard ondertekenen',
+    id: 'signUrls',
+    name: 'settings[signUrls]',
+    on: settings.signUrls,
+}) }}
+
+{{ forms.textField({
+    label: 'Upload-map (Media Library)',
+    id: 'uploadFolder',
+    name: 'settings[uploadFolder]',
+    value: settings.uploadFolder,
+}) }}

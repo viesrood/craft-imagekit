@@ -1,0 +1,39 @@
+{
+    "name": "viesrood/craft-imagekit",
+    "description": "Realtime beeldtransformatie en -optimalisatie via ImageKit.io: een native Craft-image-transformer plus Twig-helpers en een upload-hulpprogramma.",
+    "type": "craft-plugin",
+    "license": "MIT",
+    "keywords": [
+        "craft",
+        "craftcms",
+        "craft-plugin",
+        "imagekit",
+        "images",
+        "image transform",
+        "cdn",
+        "optimization"
+    ],
+    "support": {
+        "docs": "https://github.com/viesrood/craft-imagekit/blob/main/README.md",
+        "issues": "https://github.com/viesrood/craft-imagekit/issues",
+        "source": "https://github.com/viesrood/craft-imagekit"
+    },
+    "require": {
+        "php": ">=8.2",
+        "craftcms/cms": "^5.0.0",
+        "imagekit/imagekit": "^4.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "viesrood\\imagekit\\": "src/"
+        }
+    },
+    "extra": {
+        "handle": "imagekit",
+        "name": "ImageKit Toolkit",
+        "class": "viesrood\\imagekit\\Plugin",
+        "developer": "Viesrood",
+        "developerUrl": "https://viesrood.nl",
+        "documentationUrl": "https://github.com/viesrood/craft-imagekit"
+    }
+}
