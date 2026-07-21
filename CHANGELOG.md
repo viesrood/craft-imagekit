@@ -16,6 +16,8 @@
   `removeBackgroundPro`, `dropShadow`, `upscale`, `retouch`, `changeBackground` and
   `generativeFill`.
 - `chain` option: extra chained transformation steps as an array of option maps.
+- `proxy` option for asset sources: use the full asset URL (ImageKit web proxy) instead of an
+  endpoint-relative path.
 - `overlay` option: one or more image/text overlay layers from a friendly definition.
 - Native transformer: focal-point-aware centered crops (an explicit non-center `position`
   still wins) and `interlace` mapped to progressive JPEG output.

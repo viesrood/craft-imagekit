@@ -227,7 +227,10 @@ parameter without a friendly alias still works - e.g. `{ 'e-genvar': '-' }` or
 `{ raw: 'l-image,i-logo.png,l-end' }`.
 
 **URL options:** `signed: true` (plus an optional `expire: <seconds>`) signs the URL
-(HMAC-SHA1); both default to the `signUrls`/`signedExpire` settings.
+(HMAC-SHA1); both default to the `signUrls`/`signedExpire` settings. For asset sources,
+`proxy: true` uses the full asset URL as the source (ImageKit web proxy) instead of an
+endpoint-relative path - use this when your URL endpoint has a Web Proxy origin rather than a
+web folder origin pointing at your site.
 
 ## Responsive images
 

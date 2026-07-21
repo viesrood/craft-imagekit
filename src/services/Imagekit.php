@@ -87,6 +87,11 @@ class Imagekit extends Component
         $chain = $this->extractChain($options);
         $overlays = $this->extractOverlays($options);
 
+        // With proxy: true the full asset URL is used as the source (ImageKit
+        // web proxy) instead of an endpoint-relative path.
+        $proxy = (bool)($options['proxy'] ?? false);
+        unset($options['proxy']);
+
         // Keep the structural options separate; the rest (quality/format/...)
         // rides along on the last transform step.
         $mode = (string)($options['mode'] ?? 'crop');
@@ -101,8 +106,9 @@ class Imagekit extends Component
         $transformation = $this->assetTransformation($asset, $mode, $targetW, $targetH, $output);
         $transformation = $this->appendExtraSteps($transformation, $chain, $overlays, $settings);
 
+        $assetUrl = (string)$asset->getUrl();
         $params = [
-            'path' => $this->assetPath($asset, $settings),
+            'path' => $proxy && $assetUrl !== '' ? $assetUrl : $this->assetPath($asset, $settings),
             'transformation' => $transformation,
         ];
 
@@ -193,6 +199,7 @@ class Imagekit extends Component
             $options['expireSeconds'],
             $options['chain'],
             $options['overlay'],
+            $options['proxy'],
         );
         return $options;
     }
