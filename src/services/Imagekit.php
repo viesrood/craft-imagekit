@@ -27,6 +27,9 @@ class Imagekit extends Component
 
     private ?ImageKitClient $urlClient = null;
 
+    /** Guard so the "not configured" warning is logged once per request. */
+    private bool $warnedUnconfigured = false;
+
     /**
      * Build an ImageKit transformation URL.
      *
@@ -68,7 +71,8 @@ class Imagekit extends Component
         // Escape hatch: no endpoint configured -> native Craft transform. The
         // options map 1-to-1 onto a Craft transform definition (mode/width/
         // height/quality/format).
-        if ($this->parsedUrlEndpoint($settings) === '') {
+        if ($settings->getParsedUrlEndpoint() === '') {
+            $this->warnUnconfigured();
             return $asset->getUrl($this->assetTransformOptions($options)) ?? '';
         }
 
@@ -145,7 +149,7 @@ class Imagekit extends Component
         $assetUrl = (string)$asset->getUrl();
 
         // Already under our own ImageKit endpoint: use the rest as the Media Library path.
-        $endpoint = rtrim($this->parsedUrlEndpoint($settings), '/');
+        $endpoint = rtrim($settings->getParsedUrlEndpoint(), '/');
         if ($endpoint !== '' && str_starts_with($assetUrl, $endpoint . '/')) {
             return '/' . ltrim(substr($assetUrl, strlen($endpoint) + 1), '/');
         }
@@ -183,6 +187,14 @@ class Imagekit extends Component
     {
         $settings = $this->settings();
 
+        // Not configured: never emit placeholder-endpoint URLs. An absolute URL
+        // is returned untouched so the page keeps working; a Media Library path
+        // has no meaningful fallback.
+        if ($settings->getParsedUrlEndpoint() === '') {
+            $this->warnUnconfigured();
+            return $this->isAbsoluteUrl($source) ? $source : '';
+        }
+
         $sign = $this->extractSignParams($options, $settings);
 
         $transformation = Transformation::mapOptions($options, $settings->defaultFormat, $settings->defaultQuality);
@@ -192,10 +204,10 @@ class Imagekit extends Component
         ];
 
         if ($this->isAbsoluteUrl($source)) {
-            $endpoint = rtrim($this->parsedUrlEndpoint($settings), '/');
+            $endpoint = rtrim($settings->getParsedUrlEndpoint(), '/');
             $prefix = $endpoint . '/';
 
-            if ($endpoint !== '' && str_starts_with($source, $prefix)) {
+            if (str_starts_with($source, $prefix)) {
                 // Already under our own endpoint: treat the rest as a Media Library path.
                 $params['path'] = '/' . ltrim(substr($source, strlen($prefix)), '/');
             } else {
@@ -289,9 +301,9 @@ class Imagekit extends Component
     {
         $settings = $this->settings();
 
-        return (App::parseEnv($settings->privateKey) ?? '') !== ''
-            && (App::parseEnv($settings->publicKey) ?? '') !== ''
-            && $this->parsedUrlEndpoint($settings) !== '';
+        return $settings->getParsedPrivateKey() !== ''
+            && $settings->getParsedPublicKey() !== ''
+            && $settings->getParsedUrlEndpoint() !== '';
     }
 
     // ---------------------------------------------------------------------
@@ -322,9 +334,19 @@ class Imagekit extends Component
     private function buildUrl(array $params, array $sign): string
     {
         if ($sign['signed']) {
-            $params['signed'] = true;
-            if ($sign['expire'] > 0) {
-                $params['expireSeconds'] = $sign['expire'];
+            if ($this->settings()->getParsedPrivateKey() === '') {
+                // A signature computed with a placeholder key would silently be
+                // invalid; an unsigned URL at least keeps working on endpoints
+                // that do not restrict unsigned requests.
+                Craft::error(
+                    'A signed ImageKit URL was requested but no private key is configured; returning an unsigned URL.',
+                    __METHOD__
+                );
+            } else {
+                $params['signed'] = true;
+                if ($sign['expire'] > 0) {
+                    $params['expireSeconds'] = $sign['expire'];
+                }
             }
         }
 
@@ -332,12 +354,21 @@ class Imagekit extends Component
     }
 
     /**
-     * The parsed URL endpoint ('' when unset). parseEnv() returns null for an
-     * undefined env var, so this cannot simply check for ''.
+     * Log a single warning per request when URLs are requested while the
+     * plugin is not (fully) configured.
      */
-    private function parsedUrlEndpoint(Settings $settings): string
+    private function warnUnconfigured(): void
     {
-        return (string)(App::parseEnv($settings->urlEndpoint) ?? '');
+        if ($this->warnedUnconfigured) {
+            return;
+        }
+        $this->warnedUnconfigured = true;
+
+        Craft::warning(
+            'ImageKit URL requested but the plugin is not configured (missing URL endpoint); returning fallback URLs. ' .
+            'Set IMAGEKIT_PUBLIC_KEY, IMAGEKIT_PRIVATE_KEY and IMAGEKIT_URL_ENDPOINT in .env (or config/imagekit.php).',
+            __METHOD__
+        );
     }
 
     private function prepareFileArgument(string $file): string
@@ -380,9 +411,9 @@ class Imagekit extends Component
         }
 
         $settings = $this->settings();
-        $publicKey = App::parseEnv($settings->publicKey);
-        $privateKey = App::parseEnv($settings->privateKey);
-        $urlEndpoint = App::parseEnv($settings->urlEndpoint);
+        $publicKey = $settings->getParsedPublicKey();
+        $privateKey = $settings->getParsedPrivateKey();
+        $urlEndpoint = $settings->getParsedUrlEndpoint();
 
         if ($privateKey === '' || $publicKey === '' || $urlEndpoint === '') {
             throw new InvalidConfigException(
@@ -395,10 +426,11 @@ class Imagekit extends Component
     }
 
     /**
-     * Client for building URLs. Also works (partially) without complete
-     * configuration: missing keys/endpoint are replaced by clear placeholders
-     * so a template does not crash while credentials are not set yet. Signed
-     * URLs obviously need a real private key to be valid.
+     * Client for building URLs. Requires a configured URL endpoint (callers
+     * fall back before reaching this point when it is missing). The API keys
+     * never appear in unsigned URLs, so partially configured installs still
+     * get correct URLs; signing without a real private key is refused in
+     * buildUrl() with an error log.
      */
     private function urlClient(): ImageKitClient
     {
@@ -407,9 +439,18 @@ class Imagekit extends Component
         }
 
         $settings = $this->settings();
-        $publicKey = App::parseEnv($settings->publicKey) ?: 'public_unconfigured';
-        $privateKey = App::parseEnv($settings->privateKey) ?: 'private_unconfigured';
-        $urlEndpoint = App::parseEnv($settings->urlEndpoint) ?: 'https://ik.imagekit.io/your_imagekit_id';
+        $urlEndpoint = $settings->getParsedUrlEndpoint();
+
+        if ($urlEndpoint === '') {
+            throw new InvalidConfigException(
+                'ImageKit URL endpoint is missing. Set IMAGEKIT_URL_ENDPOINT in .env (or config/imagekit.php).'
+            );
+        }
+
+        // The SDK constructor requires non-empty keys; these placeholders are
+        // never emitted in unsigned URLs.
+        $publicKey = $settings->getParsedPublicKey() ?: 'public_unconfigured';
+        $privateKey = $settings->getParsedPrivateKey() ?: 'private_unconfigured';
 
         return $this->urlClient = new ImageKitClient($publicKey, $privateKey, $urlEndpoint);
     }

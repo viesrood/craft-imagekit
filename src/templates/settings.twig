@@ -60,9 +60,36 @@ IMAGEKIT_URL_ENDPOINT=https://ik.imagekit.io/&lt;imagekit_id&gt;</pre>
 
 {{ forms.lightswitchField({
     label: 'Sign URLs by default',
+    instructions: 'Recommended when a Web Proxy origin is enabled: an unsigned web proxy lets anyone transform arbitrary URLs on your account.',
     id: 'signUrls',
     name: 'settings[signUrls]',
     on: settings.signUrls,
+}) }}
+
+{{ forms.textField({
+    label: 'Signed URL expiry (seconds)',
+    instructions: 'Validity period for signed URLs; 0 = non-expiring.',
+    id: 'signedExpire',
+    name: 'settings[signedExpire]',
+    type: 'number',
+    size: 8,
+    value: settings.signedExpire,
+}) }}
+
+{{ forms.textField({
+    label: 'Default srcset widths',
+    instructions: 'Comma-separated widths used by `imagekit_srcset()` and `imagekit_img()` when no explicit widths are given.',
+    id: 'defaultSrcsetWidths',
+    name: 'settings[defaultSrcsetWidths]',
+    value: settings.defaultSrcsetWidths | join(', '),
+}) }}
+
+{{ forms.lightswitchField({
+    label: 'Native asset URLs in devMode',
+    instructions: 'Serve untransformed asset URLs for Craft assets while devMode is on. Useful when the local origin (e.g. *.ddev.site) is not reachable for ImageKit.',
+    id: 'useNativeInDevMode',
+    name: 'settings[useNativeInDevMode]',
+    on: settings.useNativeInDevMode,
 }) }}
 
 {{ forms.textField({

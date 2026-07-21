@@ -40,7 +40,11 @@
         {{ forms.textField({ label: 'Quality (1-100)', name: 'quality', size: 4, type: 'number', value: 80 }) }}
     </div>
 
-    {{ forms.lightswitchField({ label: 'Sign URL (signed)', name: 'signed' }) }}
+    {{ forms.lightswitchField({
+        label: 'Sign URL (signed)',
+        instructions: 'Recommended for web proxy sources (external URLs) and required when unsigned requests are restricted in the ImageKit dashboard.',
+        name: 'signed',
+    }) }}
 
     <div class="buttons">
         <button type="submit" class="btn submit">Transform</button>
