@@ -19,13 +19,13 @@ use viesrood\imagekit\web\twig\ImagekitExtension;
 use yii\base\Event;
 
 /**
- * ImageKit-plugin.
+ * ImageKit plugin.
  *
- * Zet afbeeldingen om/optimaliseert ze via ImageKit.io:
- * - een native Craft-image-transformer (`asset.url({ width: 400 })` via ImageKit);
- * - Twig-helper `imagekit()` / filter voor realtime transformatie-URL's;
- * - `imagekit_srcset()` voor responsive srcset-strings;
- * - een CP-hulpprogramma om lokale bestanden naar ImageKit te uploaden.
+ * Transforms and optimizes images through ImageKit.io:
+ * - a native Craft image transformer (`asset.url({ width: 400 })` via ImageKit);
+ * - Twig helper `imagekit()` / filter for real-time transformation URLs;
+ * - `imagekit_srcset()` for responsive srcset strings;
+ * - a control panel utility to upload local files to ImageKit.
  *
  * @property-read ImagekitService $imagekit
  */
@@ -36,7 +36,7 @@ class Plugin extends BasePlugin
     public bool $hasCpSettings = true;
 
     /**
-     * Registreer de service als component, zodat Plugin::getInstance()->imagekit werkt.
+     * Register the service as a component so Plugin::getInstance()->imagekit works.
      *
      * @return array{components: array<string, mixed>}
      */
@@ -53,13 +53,13 @@ class Plugin extends BasePlugin
     {
         parent::init();
 
-        // Twig-helper + filter registreren.
+        // Register the Twig helper + filter.
         Craft::$app->onInit(function () {
             Craft::$app->getView()->registerTwigExtension(new ImagekitExtension());
         });
 
-        // Native image-transformer beschikbaar maken (opt-in per volume/filesystem via de
-        // `transformer`-config, of programmatisch op een ImageTransform).
+        // Make the native image transformer available (opt-in per volume/filesystem
+        // via the `transformer` config key, or programmatically on an ImageTransform).
         Event::on(
             ImageTransforms::class,
             ImageTransforms::EVENT_REGISTER_IMAGE_TRANSFORMERS,
@@ -68,7 +68,7 @@ class Plugin extends BasePlugin
             }
         );
 
-        // CP-hulpprogramma registreren.
+        // Register the control panel utility.
         Event::on(
             Utilities::class,
             Utilities::EVENT_REGISTER_UTILITIES,
@@ -77,11 +77,11 @@ class Plugin extends BasePlugin
             }
         );
 
-        Craft::info('ImageKit-plugin geladen', __METHOD__);
+        Craft::info('ImageKit plugin loaded', __METHOD__);
     }
 
     /**
-     * Snelkoppeling naar de service.
+     * Shortcut to the service.
      */
     public function getImagekit(): ImagekitService
     {

@@ -11,16 +11,16 @@ use Twig\TwigFilter;
 use Twig\TwigFunction;
 
 /**
- * Twig-helpers voor ImageKit.
+ * Twig helpers for ImageKit.
  *
- * De bron mag een string (Media Library-pad of externe URL) of een Craft-{@see Asset} zijn.
- * Bij een asset zijn crops focuspunt-bewust en begrijpt hij de opties `mode: 'crop'|'fit'`,
- * `width` en `height`.
+ * The source may be a string (Media Library path or external URL) or a Craft
+ * {@see Asset}. For assets, crops are focal-point aware and the options
+ * `mode: 'crop'|'fit'`, `width` and `height` are understood.
  *
- * Functie:  {{ imagekit('/foto.jpg', { width: 800, format: 'auto' }) }}
+ * Function: {{ imagekit('/photo.jpg', { width: 800, format: 'auto' }) }}
  * Asset:    {{ imagekit(entry.image.one(), { mode: 'crop', width: 720, height: 480 }) }}
- * Filter:   {{ 'https://voorbeeld.nl/foto.jpg' | imagekit({ width: 800 }) }}
- * Srcset:   <img srcset="{{ imagekit_srcset('/foto.jpg', [400, 800, 1200]) }}">
+ * Filter:   {{ 'https://example.com/photo.jpg' | imagekit({ width: 800 }) }}
+ * Srcset:   <img srcset="{{ imagekit_srcset('/photo.jpg', [400, 800, 1200]) }}">
  */
 class ImagekitExtension extends AbstractExtension
 {

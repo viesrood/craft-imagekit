@@ -11,8 +11,8 @@ use viesrood\imagekit\Plugin;
 use yii\web\Response;
 
 /**
- * Backend voor het ImageKit-hulpprogramma. Uploadt (optioneel) een bestand of neemt een
- * bron-URL, en geeft de omgezette ImageKit-URL + Media Library-pad als JSON terug.
+ * Backend for the ImageKit utility. Uploads a file (optionally) or takes a
+ * source URL, and returns the converted ImageKit URL + Media Library path as JSON.
  */
 class ConvertController extends Controller
 {
@@ -46,7 +46,7 @@ class ConvertController extends Controller
                 ]);
                 $filePath = $result['filePath'];
                 if ($filePath === null) {
-                    throw new \RuntimeException('Upload gaf geen filePath terug.');
+                    throw new \RuntimeException('Upload did not return a filePath.');
                 }
                 $transformed = $service->url($filePath, $options);
 
@@ -74,10 +74,10 @@ class ConvertController extends Controller
 
             return $this->asJson([
                 'success' => false,
-                'error' => 'Kies een bestand of vul een bron-URL in.',
+                'error' => 'Choose a file or enter a source URL.',
             ]);
         } catch (\Throwable $e) {
-            Craft::error('ImageKit-conversie mislukt: ' . $e->getMessage(), __METHOD__);
+            Craft::error('ImageKit conversion failed: ' . $e->getMessage(), __METHOD__);
 
             return $this->asJson([
                 'success' => false,

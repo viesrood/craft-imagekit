@@ -7,36 +7,37 @@ namespace viesrood\imagekit\models;
 use craft\base\Model;
 
 /**
- * Plugin-instellingen.
+ * Plugin settings.
  *
- * De credential-velden verwijzen standaard naar env-vars; ze worden in de service
- * opgelost met craft\helpers\App::parseEnv(). Overschrijven kan ook per omgeving via
- * config/imagekit.php (Craft past dat bestand automatisch toe op deze settings).
+ * The credential fields reference env vars by default; they are resolved in the
+ * service with craft\helpers\App::parseEnv(). They can also be overridden per
+ * environment via config/imagekit.php (Craft automatically applies that file
+ * to these settings).
  */
 class Settings extends Model
 {
-    /** Publieke API-key (mag client-side, maar wij gebruiken 'm server-side). */
+    /** Public API key (safe client-side, but we only use it server-side). */
     public string $publicKey = '$IMAGEKIT_PUBLIC_KEY';
 
-    /** Private API-key - alleen server-side, nooit blootstellen. */
+    /** Private API key - server-side only, never expose it. */
     public string $privateKey = '$IMAGEKIT_PRIVATE_KEY';
 
-    /** URL-endpoint, bv. https://ik.imagekit.io/<imagekit_id>. */
+    /** URL endpoint, e.g. https://ik.imagekit.io/<imagekit_id>. */
     public string $urlEndpoint = '$IMAGEKIT_URL_ENDPOINT';
 
-    /** Standaard-formaat wanneer geen `format` is opgegeven: auto/webp/avif/jpg/png. */
+    /** Default format when no `format` is given: auto/webp/avif/jpg/png. */
     public string $defaultFormat = 'auto';
 
-    /** Standaard-kwaliteit (1-100) wanneer geen `quality` is opgegeven; null = niet zetten. */
+    /** Default quality (1-100) when no `quality` is given; null = do not set. */
     public ?int $defaultQuality = 80;
 
-    /** URL's standaard ondertekenen (HMAC-SHA1). Aanraders bij web-proxy/privebestanden. */
+    /** Sign URLs by default (HMAC-SHA1). Recommended for web proxy/private files. */
     public bool $signUrls = false;
 
-    /** Geldigheidsduur voor signed URL's in seconden; 0 = niet-verlopend. */
+    /** Validity period for signed URLs in seconds; 0 = non-expiring. */
     public int $signedExpire = 0;
 
-    /** Doelmap in de ImageKit Media Library voor uploads. */
+    /** Target folder in the ImageKit Media Library for uploads. */
     public string $uploadFolder = '/uploads';
 
     public function rules(): array

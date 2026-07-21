@@ -9,16 +9,17 @@ use craft\base\Component;
 use craft\elements\Asset;
 use craft\helpers\App;
 use ImageKit\ImageKit as ImageKitClient;
+use viesrood\imagekit\helpers\Transformation;
 use viesrood\imagekit\models\Settings;
 use viesrood\imagekit\Plugin;
 use yii\base\InvalidConfigException;
 
 /**
- * Dunne wrapper om de officiele imagekit/imagekit-SDK.
+ * Thin wrapper around the official imagekit/imagekit SDK.
  *
- * - url(): bouwt een (optioneel ondertekende) transformatie-URL voor een Media
- *   Library-pad of een bestaande externe URL (web-proxy).
- * - upload(): uploadt een lokaal bestand of publieke URL naar de Media Library.
+ * - url(): builds an (optionally signed) transformation URL for a Media
+ *   Library path or an existing external URL (web proxy).
+ * - upload(): uploads a local file or public URL to the Media Library.
  */
 class Imagekit extends Component
 {
@@ -27,51 +28,20 @@ class Imagekit extends Component
     private ?ImageKitClient $urlClient = null;
 
     /**
-     * Map van "vriendelijke" optienamen naar SDK-transformatiekeys.
-     */
-    private const OPTION_MAP = [
-        'width' => 'width',
-        'w' => 'width',
-        'height' => 'height',
-        'h' => 'height',
-        'format' => 'format',
-        'f' => 'format',
-        'quality' => 'quality',
-        'q' => 'quality',
-        'crop' => 'crop',
-        'c' => 'crop',
-        'cropMode' => 'cropMode',
-        'cm' => 'cropMode',
-        'x' => 'x',
-        'y' => 'y',
-        'focus' => 'focus',
-        'fo' => 'focus',
-        'aspectRatio' => 'aspectRatio',
-        'ar' => 'aspectRatio',
-        'dpr' => 'dpr',
-        'blur' => 'blur',
-        'bl' => 'blur',
-        'radius' => 'radius',
-        'r' => 'radius',
-        'rotation' => 'rotation',
-        'rt' => 'rotation',
-        'background' => 'background',
-        'bg' => 'background',
-    ];
-
-    /**
-     * Bouw een ImageKit-transformatie-URL.
+     * Build an ImageKit transformation URL.
      *
-     * Accepteert zowel een Craft {@see Asset} als een string-bron:
-     * - Asset: de publieke asset-URL wordt tot een pad t.o.v. het endpoint herleid en
-     *   crops honoreren het per-asset focuspunt ({@see focalCropTransformation()}).
-     *   Ondersteunt de "vriendelijke" opties `mode` (`crop`/`fit`), `width`, `height`,
-     *   plus alles uit {@see OPTION_MAP} (quality/format/…). Null asset -> ''. Zonder
-     *   geconfigureerd endpoint valt hij terug op een native Craft-transform-URL.
-     * - string: Media Library-pad (bv. /map/foto.jpg) of een absolute (externe) URL.
+     * Accepts both a Craft {@see Asset} and a string source:
+     * - Asset: the public asset URL is resolved to a path relative to the
+     *   endpoint, and crops honor the per-asset focal point. Supports the
+     *   friendly options `mode` (`crop`/`fit`), `width`, `height`, plus
+     *   everything in {@see Transformation::OPTION_MAP} (quality/format/...).
+     *   A null asset returns ''. Without a configured endpoint it falls back
+     *   to a native Craft transform URL.
+     * - string: Media Library path (e.g. /folder/photo.jpg) or an absolute
+     *   (external) URL.
      *
      * @param Asset|string|null $source
-     * @param array<string,mixed> $options Transformatie- en URL-opties (zie OPTION_MAP + mode/signed/expire).
+     * @param array<string,mixed> $options Transformation and URL options (see OPTION_MAP + mode/signed/expire).
      */
     public function url(Asset|string|null $source, array $options = []): string
     {
@@ -87,7 +57,7 @@ class Imagekit extends Component
     }
 
     /**
-     * Bouw een transformatie-URL voor een Craft-asset (focuspunt-bewust).
+     * Build a transformation URL for a Craft asset (focal-point aware).
      *
      * @param array<string,mixed> $options
      */
@@ -95,29 +65,23 @@ class Imagekit extends Component
     {
         $settings = $this->settings();
 
-        // Escape-hatch: geen endpoint geconfigureerd -> native Craft-transform (net als de
-        // oude custom module). Opties zijn 1-op-1 een Craft-transformdefinitie (mode/width/
-        // height/quality/format). parseEnv() geeft null terug voor een niet-bestaande env-var,
-        // dus niet alleen op '' controleren.
-        if ((string)(App::parseEnv($settings->urlEndpoint) ?? '') === '') {
+        // Escape hatch: no endpoint configured -> native Craft transform. The
+        // options map 1-to-1 onto a Craft transform definition (mode/width/
+        // height/quality/format).
+        if ($this->parsedUrlEndpoint($settings) === '') {
             return $asset->getUrl($this->assetTransformOptions($options)) ?? '';
         }
 
-        // signed/expire uit de opties lichten; de rest zijn transformaties.
-        $signed = array_key_exists('signed', $options)
-            ? (bool)$options['signed']
-            : $settings->signUrls;
-        $expire = (int)($options['expire'] ?? $options['expireSeconds'] ?? $settings->signedExpire);
-        unset($options['signed'], $options['expire'], $options['expireSeconds']);
+        $sign = $this->extractSignParams($options, $settings);
 
-        // Structurele opties apart houden; de rest (quality/format/…) rijdt mee op de
-        // laatste transform-stap.
+        // Keep the structural options separate; the rest (quality/format/...)
+        // rides along on the last transform step.
         $mode = (string)($options['mode'] ?? 'crop');
         $targetW = (int)($options['width'] ?? 0);
         $targetH = (int)($options['height'] ?? 0);
         unset($options['mode'], $options['width'], $options['height']);
 
-        $output = $this->buildTransformation($options, $settings);
+        $output = Transformation::mapOptions($options, $settings->defaultFormat, $settings->defaultQuality);
         $transformation = $this->assetTransformation($asset, $mode, $targetW, $targetH, $output);
 
         $params = [
@@ -125,20 +89,13 @@ class Imagekit extends Component
             'transformation' => $transformation,
         ];
 
-        if ($signed) {
-            $params['signed'] = true;
-            if ($expire > 0) {
-                $params['expireSeconds'] = $expire;
-            }
-        }
-
-        return $this->urlClient()->url($params);
+        return $this->buildUrl($params, $sign);
     }
 
     /**
-     * Vertaal `mode`/`width`/`height` naar een (mogelijk geketende) ImageKit-transformatie.
+     * Translate `mode`/`width`/`height` into a (possibly chained) ImageKit transformation.
      *
-     * @param array<string,string> $output Reeds gemapte output-opties (quality/format/…).
+     * @param array<string,string> $output Already-mapped output options (quality/format/...).
      * @return array<int,array<string,string>>
      */
     private function assetTransformation(Asset $asset, string $mode, int $targetW, int $targetH, array $output): array
@@ -156,10 +113,20 @@ class Imagekit extends Component
         }
 
         if ($mode === 'crop' && $targetW && $targetH) {
-            return $this->focalCropTransformation($asset, $targetW, $targetH, $output);
+            $fp = $asset->getHasFocalPoint() ? $asset->getFocalPoint() : null;
+
+            return Transformation::focalCropSteps(
+                $targetW,
+                $targetH,
+                (int)$asset->width,
+                (int)$asset->height,
+                is_array($fp) ? (float)$fp['x'] : null,
+                is_array($fp) ? (float)$fp['y'] : null,
+                $output,
+            );
         }
 
-        // Overige modes / ontbrekende dimensie: gewone resize.
+        // Other modes / missing dimension: plain resize.
         $t = $output;
         if ($targetW) {
             $t['width'] = (string)$targetW;
@@ -171,83 +138,32 @@ class Imagekit extends Component
     }
 
     /**
-     * Focuspunt-bewuste crop naar exact $targetW x $targetH.
-     *
-     * Zonder (relevant) focuspunt: gewone crop-tot-vullend (ImageKit default maintain_ratio,
-     * gecentreerd). Met focuspunt: twee-staps transform - eerst opschalen tot dekking
-     * (`c-force`), dan `cm-extract` rondom het focuspunt. Poort van de oude custom module.
-     *
-     * @param array<string,string> $output
-     * @return array<int,array<string,string>>
-     */
-    private function focalCropTransformation(Asset $asset, int $targetW, int $targetH, array $output): array
-    {
-        $origW = (int)$asset->width;
-        $origH = (int)$asset->height;
-        $fp = $asset->getHasFocalPoint() ? $asset->getFocalPoint() : null;
-
-        $hasFocalPoint = is_array($fp) && $origW && $origH
-            && (abs($fp['x'] - 0.5) > 0.02 || abs($fp['y'] - 0.5) > 0.02);
-
-        if (!$hasFocalPoint) {
-            $t = $output;
-            $t['width'] = (string)$targetW;
-            $t['height'] = (string)$targetH;
-            return [$t];
-        }
-
-        $scale = max($targetW / $origW, $targetH / $origH);
-        $scaledW = (int)round($origW * $scale);
-        $scaledH = (int)round($origH * $scale);
-
-        $fpX = $fp['x'] * $scaledW;
-        $fpY = $fp['y'] * $scaledH;
-
-        $cropX = (int)max(0, min($scaledW - $targetW, round($fpX - $targetW / 2)));
-        $cropY = (int)max(0, min($scaledH - $targetH, round($fpY - $targetH / 2)));
-
-        $step1 = [
-            'width' => (string)$scaledW,
-            'height' => (string)$scaledH,
-            'crop' => 'force',
-        ];
-        $step2 = array_merge([
-            'cropMode' => 'extract',
-            'x' => (string)$cropX,
-            'y' => (string)$cropY,
-            'width' => (string)$targetW,
-            'height' => (string)$targetH,
-        ], $output);
-
-        return [$step1, $step2];
-    }
-
-    /**
-     * Herleid het endpoint-relatieve pad van een asset.
+     * Resolve the endpoint-relative path of an asset.
      */
     private function assetPath(Asset $asset, Settings $settings): string
     {
         $assetUrl = (string)$asset->getUrl();
 
-        // Al onder ons eigen ImageKit-endpoint: neem de rest als Media Library-pad.
-        $endpoint = rtrim((string)(App::parseEnv($settings->urlEndpoint) ?? ''), '/');
+        // Already under our own ImageKit endpoint: use the rest as the Media Library path.
+        $endpoint = rtrim($this->parsedUrlEndpoint($settings), '/');
         if ($endpoint !== '' && str_starts_with($assetUrl, $endpoint . '/')) {
             return '/' . ltrim(substr($assetUrl, strlen($endpoint) + 1), '/');
         }
 
-        // Anders: strip het site-origin -> pad t.o.v. de origin (ImageKit-endpoint met origin).
+        // Otherwise: strip the site origin -> path relative to the origin
+        // (an ImageKit endpoint with an attached origin).
         $siteUrl = rtrim((string)App::env('PRIMARY_SITE_URL'), '/');
         if ($siteUrl !== '' && str_starts_with($assetUrl, $siteUrl)) {
             return '/' . ltrim(substr($assetUrl, strlen($siteUrl)), '/');
         }
 
-        // Fallback: pad uit de URL parsen.
+        // Fallback: parse the path out of the URL.
         $path = parse_url($assetUrl, PHP_URL_PATH) ?: $assetUrl;
         return '/' . ltrim($path, '/');
     }
 
     /**
-     * Maak van de vriendelijke opties een Craft-transformdefinitie (voor de native fallback).
+     * Turn the friendly options into a Craft transform definition (for the native fallback).
      *
      * @param array<string,mixed> $options
      * @return array<string,mixed>
@@ -259,57 +175,44 @@ class Imagekit extends Component
     }
 
     /**
-     * Bouw een transformatie-URL voor een string-bron (pad of externe URL).
+     * Build a transformation URL for a string source (path or external URL).
      *
-     * @param array<string,mixed> $options Transformatie- en URL-opties (zie OPTION_MAP + signed/expire).
+     * @param array<string,mixed> $options Transformation and URL options (see OPTION_MAP + signed/expire).
      */
     private function urlForString(string $source, array $options = []): string
     {
         $settings = $this->settings();
-        $client = $this->urlClient();
 
-        // signed/expire uit de opties lichten; de rest zijn transformaties.
-        $signed = array_key_exists('signed', $options)
-            ? (bool)$options['signed']
-            : $settings->signUrls;
-        $expire = (int)($options['expire'] ?? $options['expireSeconds'] ?? $settings->signedExpire);
-        unset($options['signed'], $options['expire'], $options['expireSeconds']);
+        $sign = $this->extractSignParams($options, $settings);
 
-        $transformation = $this->buildTransformation($options, $settings);
+        $transformation = Transformation::mapOptions($options, $settings->defaultFormat, $settings->defaultQuality);
 
         $params = [
             'transformation' => [$transformation],
         ];
 
-        if ($signed) {
-            $params['signed'] = true;
-            if ($expire > 0) {
-                $params['expireSeconds'] = $expire;
-            }
-        }
-
         if ($this->isAbsoluteUrl($source)) {
-            $endpoint = rtrim((string)(App::parseEnv($settings->urlEndpoint) ?? ''), '/');
+            $endpoint = rtrim($this->parsedUrlEndpoint($settings), '/');
             $prefix = $endpoint . '/';
 
-            if (str_starts_with($source, $prefix)) {
-                // Al onder ons eigen endpoint: behandel de rest als Media Library-pad.
+            if ($endpoint !== '' && str_starts_with($source, $prefix)) {
+                // Already under our own endpoint: treat the rest as a Media Library path.
                 $params['path'] = '/' . ltrim(substr($source, strlen($prefix)), '/');
             } else {
-                // Externe URL: canonieke web-proxy-vorm endpoint/tr:.../<volledige externe URL>.
-                // Via `path` (niet `src`), zodat de transformatie in het pad komt en signed
-                // URL's blijven werken (de SDK kan alleen ondertekenen met endpoint + path).
+                // External URL: canonical web-proxy form endpoint/tr:.../<full external URL>.
+                // Via `path` (not `src`), so the transformation ends up in the path and
+                // signed URLs keep working (the SDK can only sign endpoint + path).
                 $params['path'] = $source;
             }
         } else {
             $params['path'] = '/' . ltrim($source, '/');
         }
 
-        return $client->url($params);
+        return $this->buildUrl($params, $sign);
     }
 
     /**
-     * Bouw een srcset-string voor responsive afbeeldingen.
+     * Build a srcset string for responsive images.
      *
      * @param Asset|string $source
      * @param int[] $widths
@@ -331,9 +234,9 @@ class Imagekit extends Component
     }
 
     /**
-     * Upload een bestand of publieke URL naar de ImageKit Media Library.
+     * Upload a file or public URL to the ImageKit Media Library.
      *
-     * @param string $file Lokaal bestandspad, base64-string of publieke URL.
+     * @param string $file Local file path, base64 string, or public URL.
      * @param array<string,mixed> $options fileName, folder, useUniqueFileName, tags, ...
      * @return array{url:?string,filePath:?string,fileId:?string,name:?string,width:?int,height:?int,size:?int}
      */
@@ -360,12 +263,12 @@ class Imagekit extends Component
         $error = $response->error ?? ($response->err ?? null);
         if (!empty($error)) {
             $message = is_string($error) ? $error : json_encode($error);
-            throw new \RuntimeException('ImageKit-upload mislukt: ' . $message);
+            throw new \RuntimeException('ImageKit upload failed: ' . $message);
         }
 
         $result = $response->result ?? null;
         if ($result === null) {
-            throw new \RuntimeException('ImageKit-upload gaf geen resultaat terug.');
+            throw new \RuntimeException('ImageKit upload did not return a result.');
         }
 
         return [
@@ -380,58 +283,75 @@ class Imagekit extends Component
     }
 
     /**
-     * Is de plugin bruikbaar (zijn de verplichte credentials gezet)?
+     * Is the plugin usable (are the required credentials set)?
      */
     public function isConfigured(): bool
     {
         $settings = $this->settings();
 
-        return App::parseEnv($settings->privateKey) !== ''
-            && App::parseEnv($settings->publicKey) !== ''
-            && App::parseEnv($settings->urlEndpoint) !== '';
+        return (App::parseEnv($settings->privateKey) ?? '') !== ''
+            && (App::parseEnv($settings->publicKey) ?? '') !== ''
+            && $this->parsedUrlEndpoint($settings) !== '';
     }
 
     // ---------------------------------------------------------------------
 
     /**
-     * @param array<string,mixed> $options
-     * @return array<string,string>
+     * Extract the signing options (signed/expire) from the option array.
+     *
+     * @param array<string,mixed> $options Modified in place: signing keys are removed.
+     * @return array{signed: bool, expire: int}
      */
-    private function buildTransformation(array $options, Settings $settings): array
+    private function extractSignParams(array &$options, Settings $settings): array
     {
-        $transformation = [];
+        $signed = array_key_exists('signed', $options)
+            ? (bool)$options['signed']
+            : $settings->signUrls;
+        $expire = (int)($options['expire'] ?? $options['expireSeconds'] ?? $settings->signedExpire);
+        unset($options['signed'], $options['expire'], $options['expireSeconds']);
 
-        foreach ($options as $key => $value) {
-            if ($value === null || $value === '') {
-                continue;
+        return ['signed' => $signed, 'expire' => $expire];
+    }
+
+    /**
+     * Run the assembled SDK params through the URL client, applying signing.
+     *
+     * @param array<string,mixed> $params
+     * @param array{signed: bool, expire: int} $sign
+     */
+    private function buildUrl(array $params, array $sign): string
+    {
+        if ($sign['signed']) {
+            $params['signed'] = true;
+            if ($sign['expire'] > 0) {
+                $params['expireSeconds'] = $sign['expire'];
             }
-            $sdkKey = self::OPTION_MAP[$key] ?? $key;
-            $transformation[$sdkKey] = (string)$value;
         }
 
-        // Defaults toepassen wanneer niet expliciet opgegeven.
-        if (!isset($transformation['format']) && $settings->defaultFormat !== '') {
-            $transformation['format'] = $settings->defaultFormat;
-        }
-        if (!isset($transformation['quality']) && $settings->defaultQuality !== null) {
-            $transformation['quality'] = (string)$settings->defaultQuality;
-        }
+        return $this->urlClient()->url($params);
+    }
 
-        return $transformation;
+    /**
+     * The parsed URL endpoint ('' when unset). parseEnv() returns null for an
+     * undefined env var, so this cannot simply check for ''.
+     */
+    private function parsedUrlEndpoint(Settings $settings): string
+    {
+        return (string)(App::parseEnv($settings->urlEndpoint) ?? '');
     }
 
     private function prepareFileArgument(string $file): string
     {
-        // Lokaal, bestaand bestand -> base64 meesturen (SDK accepteert base64 of URL).
+        // Local, existing file -> send as base64 (the SDK accepts base64 or a URL).
         if (is_file($file)) {
             $contents = file_get_contents($file);
             if ($contents === false) {
-                throw new \RuntimeException("Kon bestand niet lezen: {$file}");
+                throw new \RuntimeException("Could not read file: {$file}");
             }
             return base64_encode($contents);
         }
 
-        // Anders: publieke URL of al-base64 -> zoals aangeleverd.
+        // Otherwise: public URL or already-base64 -> pass through as-is.
         return $file;
     }
 
@@ -444,7 +364,7 @@ class Imagekit extends Component
     {
         $plugin = Plugin::getInstance();
         if ($plugin === null) {
-            throw new InvalidConfigException('ImageKit-plugin is niet geinitialiseerd.');
+            throw new InvalidConfigException('The ImageKit plugin has not been initialized.');
         }
 
         /** @var Settings $settings */
@@ -466,8 +386,8 @@ class Imagekit extends Component
 
         if ($privateKey === '' || $publicKey === '' || $urlEndpoint === '') {
             throw new InvalidConfigException(
-                'ImageKit-credentials ontbreken. Zet IMAGEKIT_PUBLIC_KEY, IMAGEKIT_PRIVATE_KEY ' .
-                'en IMAGEKIT_URL_ENDPOINT in .env (of config/imagekit.php).'
+                'ImageKit credentials are missing. Set IMAGEKIT_PUBLIC_KEY, IMAGEKIT_PRIVATE_KEY ' .
+                'and IMAGEKIT_URL_ENDPOINT in .env (or config/imagekit.php).'
             );
         }
 
@@ -475,10 +395,10 @@ class Imagekit extends Component
     }
 
     /**
-     * Client voor het bouwen van URL's. Werkt ook (deels) zonder complete configuratie:
-     * ontbrekende keys/endpoint worden vervangen door duidelijke placeholders, zodat een
-     * template niet crasht wanneer de credentials nog niet zijn gezet. Ondertekende URL's
-     * hebben uiteraard wel een echte private key nodig om geldig te zijn.
+     * Client for building URLs. Also works (partially) without complete
+     * configuration: missing keys/endpoint are replaced by clear placeholders
+     * so a template does not crash while credentials are not set yet. Signed
+     * URLs obviously need a real private key to be valid.
      */
     private function urlClient(): ImageKitClient
     {

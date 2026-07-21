@@ -10,8 +10,8 @@ use craft\web\View;
 use viesrood\imagekit\Plugin;
 
 /**
- * CP-hulpprogramma "ImageKit": upload een afbeelding naar ImageKit en bekijk/kopieer
- * de omgezette variant + het Media Library-pad om in imagekit() te gebruiken.
+ * Control panel utility "ImageKit": upload an image to ImageKit and view/copy
+ * the converted variant + the Media Library path for use in imagekit().
  */
 class ConvertUtility extends Utility
 {
