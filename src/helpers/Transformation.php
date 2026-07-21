@@ -4,13 +4,15 @@ declare(strict_types=1);
 
 namespace viesrood\imagekit\helpers;
 
+use InvalidArgumentException;
+
 /**
  * Pure transformation-mapping logic, decoupled from Craft and the ImageKit SDK.
  *
  * Everything in this class works on plain scalars and arrays so it can be unit
  * tested without a Craft runtime. The service layer (services\Imagekit) is
  * responsible for resolving assets, settings and SDK clients and delegates the
- * option mapping and focal-crop math to this helper.
+ * option mapping, focal-crop math and overlay building to this helper.
  */
 final class Transformation
 {
@@ -23,45 +25,114 @@ final class Transformation
     /**
      * Map of friendly option names to SDK transformation keys.
      *
-     * Keys not present in this map are passed through to the SDK verbatim; the
-     * SDK in turn passes unknown keys straight into the URL, which is the
-     * documented escape hatch for ImageKit parameters without a friendly alias.
+     * Keys the SDK does not know (e.g. `fl`, `o`, `z`) are passed through to
+     * the URL verbatim by the SDK, which is also the documented escape hatch
+     * for ImageKit parameters without a friendly alias.
      */
     public const OPTION_MAP = [
+        // Sizing
         'width' => 'width',
         'w' => 'width',
         'height' => 'height',
         'h' => 'height',
-        'format' => 'format',
-        'f' => 'format',
-        'quality' => 'quality',
-        'q' => 'quality',
+        'aspectRatio' => 'aspectRatio',
+        'ar' => 'aspectRatio',
+        'dpr' => 'dpr',
+        // Cropping & focus
         'crop' => 'crop',
         'c' => 'crop',
         'cropMode' => 'cropMode',
         'cm' => 'cropMode',
         'x' => 'x',
         'y' => 'y',
+        'xc' => 'xc',
+        'yc' => 'yc',
         'focus' => 'focus',
         'fo' => 'focus',
-        'aspectRatio' => 'aspectRatio',
-        'ar' => 'aspectRatio',
-        'dpr' => 'dpr',
+        'zoom' => 'z',
+        'z' => 'z',
+        // Output
+        'format' => 'format',
+        'f' => 'format',
+        'quality' => 'quality',
+        'q' => 'quality',
+        'progressive' => 'progressive',
+        'pr' => 'progressive',
+        'lossless' => 'lossless',
+        'lo' => 'lossless',
+        'metadata' => 'metadata',
+        'md' => 'metadata',
+        'colorProfile' => 'colorProfile',
+        'defaultImage' => 'defaultImage',
+        'di' => 'defaultImage',
+        'original' => 'original',
+        'named' => 'named',
+        'n' => 'named',
+        // Effects & adjustments
         'blur' => 'blur',
         'bl' => 'blur',
         'radius' => 'radius',
         'r' => 'radius',
         'rotation' => 'rotation',
         'rt' => 'rotation',
+        'rotate' => 'rotation',
+        'flip' => 'fl',
+        'fl' => 'fl',
+        'opacity' => 'o',
         'background' => 'background',
         'bg' => 'background',
+        'border' => 'border',
+        'b' => 'border',
+        'trim' => 'trim',
+        't' => 'trim',
+        'sharpen' => 'effectSharpen',
+        'usm' => 'effectUSM',
+        'contrast' => 'effectContrast',
+        'grayscale' => 'effectGray',
+        'shadow' => 'effectShadow',
+        'gradient' => 'effectGradient',
+    ];
+
+    /**
+     * SDK keys that are emitted as a bare parameter (no value) when the option
+     * is `true`. The `'-'` marker makes the SDK emit only the key.
+     *
+     * @var string[]
+     */
+    private const BARE_FLAG_KEYS = [
+        'effectGray',
+        'effectContrast',
+        'effectSharpen',
+        'effectShadow',
+        'effectGradient',
+        'e-bgremove',
+        'e-removedotbg',
+        'e-dropshadow',
+        'e-upscale',
+        'e-retouch',
+    ];
+
+    /**
+     * AI convenience options. These are metered, paid ImageKit add-ons (and
+     * partly beta); the plugin only translates the friendly name to the raw
+     * `e-*` parameter. `true` emits the bare parameter; a string value is
+     * appended as configuration (e.g. dropShadow: 'az-215').
+     */
+    private const AI_OPTION_MAP = [
+        'removeBackground' => 'e-bgremove',
+        'removeBackgroundPro' => 'e-removedotbg',
+        'dropShadow' => 'e-dropshadow',
+        'upscale' => 'e-upscale',
+        'retouch' => 'e-retouch',
     ];
 
     /**
      * Map friendly options to an SDK transformation step.
      *
-     * Null and empty-string values are skipped. The default format/quality are
-     * applied when the options do not specify them explicitly.
+     * Null, empty-string and `false` values are skipped. `true` values become
+     * a bare parameter for flag-style keys and `'true'` for the rest (e.g.
+     * `trim: true` -> `t-true`). The default format/quality are applied when
+     * the options do not specify them explicitly.
      *
      * @param array<string,mixed> $options
      * @return array<string,string>
@@ -71,10 +142,29 @@ final class Transformation
         $transformation = [];
 
         foreach ($options as $key => $value) {
-            if ($value === null || $value === '') {
+            if ($value === null || $value === '' || $value === false) {
                 continue;
             }
-            $sdkKey = self::OPTION_MAP[$key] ?? $key;
+
+            // AI prompt options expand to their own parameter + encoded prompt.
+            if ($key === 'changeBackground') {
+                $transformation['e-changebg'] = 'prompt-' . rawurlencode((string)$value);
+                continue;
+            }
+            if ($key === 'generativeFill') {
+                $transformation['background'] = $value === true
+                    ? 'genfill'
+                    : 'genfill-prompt-' . rawurlencode((string)$value);
+                continue;
+            }
+
+            $sdkKey = self::AI_OPTION_MAP[$key] ?? self::OPTION_MAP[$key] ?? $key;
+
+            if ($value === true) {
+                $transformation[$sdkKey] = in_array($sdkKey, self::BARE_FLAG_KEYS, true) ? '-' : 'true';
+                continue;
+            }
+
             $transformation[$sdkKey] = (string)$value;
         }
 
@@ -145,5 +235,89 @@ final class Transformation
         ], $output);
 
         return [$step1, $step2];
+    }
+
+    /**
+     * Compile a friendly overlay definition into a raw ImageKit layer string
+     * (`l-image,...,l-end` / `l-text,...,l-end`).
+     *
+     * Image overlay: { image: 'logo.png', position: 'bottom_right', width: 100,
+     * height: 50, x: 10, y: 10, opacity: 60, radius: 8 }.
+     * Text overlay: { text: 'Hello', fontSize: 24, font: 'Open Sans',
+     * color: '1b1cf4', padding: 10, background: 'FFFFFF', position: 'center',
+     * width: 400, x: 10, y: 10, radius: 8 }.
+     *
+     * @param array<string,mixed> $overlay
+     */
+    public static function buildLayer(array $overlay): string
+    {
+        if (isset($overlay['image'])) {
+            $parts = ['l-image', 'i-' . self::layerPath((string)$overlay['image'])];
+            $paramMap = [
+                'width' => 'w',
+                'height' => 'h',
+                'x' => 'lx',
+                'y' => 'ly',
+                'opacity' => 'o',
+                'radius' => 'r',
+            ];
+        } elseif (isset($overlay['text'])) {
+            $parts = ['l-text', self::encodeLayerText((string)$overlay['text'])];
+            $paramMap = [
+                'fontSize' => 'fs',
+                'font' => 'ff',
+                'fontFamily' => 'ff',
+                'color' => 'co',
+                'padding' => 'pa',
+                'background' => 'bg',
+                'width' => 'w',
+                'x' => 'lx',
+                'y' => 'ly',
+                'radius' => 'r',
+            ];
+        } else {
+            throw new InvalidArgumentException('An overlay needs an "image" or "text" key.');
+        }
+
+        if (isset($overlay['position']) && $overlay['position'] !== '') {
+            $parts[] = 'lfo-' . $overlay['position'];
+        }
+
+        foreach ($paramMap as $key => $urlCode) {
+            $value = $overlay[$key] ?? null;
+            if ($value === null || $value === '' || $value === false) {
+                continue;
+            }
+            if (in_array($key, ['color', 'background'], true)) {
+                $value = ltrim((string)$value, '#');
+            }
+            $parts[] = $urlCode . '-' . $value;
+        }
+
+        $parts[] = 'l-end';
+
+        return implode(',', $parts);
+    }
+
+    /**
+     * An overlay image path: relative to the Media Library root, with path
+     * separators encoded the way ImageKit expects inside a layer (`@@`).
+     */
+    private static function layerPath(string $path): string
+    {
+        return str_replace('/', '@@', trim($path, '/'));
+    }
+
+    /**
+     * Encode overlay text: plain `i-` for simple text, base64 `ie-` (URL-safe)
+     * for anything with special characters.
+     */
+    private static function encodeLayerText(string $text): string
+    {
+        if (preg_match('/^[A-Za-z0-9 ._-]*$/', $text)) {
+            return 'i-' . str_replace(' ', '%20', $text);
+        }
+
+        return 'ie-' . rawurlencode(base64_encode($text));
     }
 }

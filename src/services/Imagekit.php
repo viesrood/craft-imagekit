@@ -77,6 +77,8 @@ class Imagekit extends Component
         }
 
         $sign = $this->extractSignParams($options, $settings);
+        $chain = $this->extractChain($options);
+        $overlays = $this->extractOverlays($options);
 
         // Keep the structural options separate; the rest (quality/format/...)
         // rides along on the last transform step.
@@ -85,8 +87,12 @@ class Imagekit extends Component
         $targetH = (int)($options['height'] ?? 0);
         unset($options['mode'], $options['width'], $options['height']);
 
-        $output = Transformation::mapOptions($options, $settings->defaultFormat, $settings->defaultQuality);
+        // With a chain, the format/quality defaults move to the last chain step.
+        $output = $chain === []
+            ? Transformation::mapOptions($options, $settings->defaultFormat, $settings->defaultQuality)
+            : Transformation::mapOptions($options, null, null);
         $transformation = $this->assetTransformation($asset, $mode, $targetW, $targetH, $output);
+        $transformation = $this->appendExtraSteps($transformation, $chain, $overlays, $settings);
 
         $params = [
             'path' => $this->assetPath($asset, $settings),
@@ -174,7 +180,13 @@ class Imagekit extends Component
      */
     private function assetTransformOptions(array $options): array
     {
-        unset($options['signed'], $options['expire'], $options['expireSeconds']);
+        unset(
+            $options['signed'],
+            $options['expire'],
+            $options['expireSeconds'],
+            $options['chain'],
+            $options['overlay'],
+        );
         return $options;
     }
 
@@ -196,11 +208,19 @@ class Imagekit extends Component
         }
 
         $sign = $this->extractSignParams($options, $settings);
+        $chain = $this->extractChain($options);
+        $overlays = $this->extractOverlays($options);
 
-        $transformation = Transformation::mapOptions($options, $settings->defaultFormat, $settings->defaultQuality);
+        // With a chain, the format/quality defaults move to the last chain step.
+        $transformation = [
+            $chain === []
+                ? Transformation::mapOptions($options, $settings->defaultFormat, $settings->defaultQuality)
+                : Transformation::mapOptions($options, null, null),
+        ];
+        $transformation = $this->appendExtraSteps($transformation, $chain, $overlays, $settings);
 
         $params = [
-            'transformation' => [$transformation],
+            'transformation' => $transformation,
         ];
 
         if ($this->isAbsoluteUrl($source)) {
@@ -307,6 +327,67 @@ class Imagekit extends Component
     }
 
     // ---------------------------------------------------------------------
+
+    /**
+     * Extract the `chain` option: an array of friendly option maps that become
+     * additional chained transformation steps.
+     *
+     * @param array<string,mixed> $options Modified in place: the chain key is removed.
+     * @return array<int,array<string,mixed>>
+     */
+    private function extractChain(array &$options): array
+    {
+        $chain = $options['chain'] ?? [];
+        unset($options['chain']);
+
+        return is_array($chain) ? array_values($chain) : [];
+    }
+
+    /**
+     * Extract the `overlay` option: a single overlay definition or a list of
+     * them (see Transformation::buildLayer() for the accepted keys).
+     *
+     * @param array<string,mixed> $options Modified in place: the overlay key is removed.
+     * @return array<int,array<string,mixed>>
+     */
+    private function extractOverlays(array &$options): array
+    {
+        $overlay = $options['overlay'] ?? null;
+        unset($options['overlay']);
+
+        if (!is_array($overlay) || $overlay === []) {
+            return [];
+        }
+
+        return array_is_list($overlay) ? $overlay : [$overlay];
+    }
+
+    /**
+     * Append chain and overlay steps to a main transformation, applying the
+     * format/quality defaults to the last chain step (the main steps were
+     * mapped without defaults when a chain is present) and dropping empty steps.
+     *
+     * @param array<int,array<string,string>> $transformation
+     * @param array<int,array<string,mixed>> $chain
+     * @param array<int,array<string,mixed>> $overlays
+     * @return array<int,array<string,string>>
+     */
+    private function appendExtraSteps(array $transformation, array $chain, array $overlays, Settings $settings): array
+    {
+        if ($chain !== []) {
+            $last = array_pop($chain);
+            foreach ($chain as $step) {
+                $transformation[] = Transformation::mapOptions((array)$step, null, null);
+            }
+            $transformation[] = Transformation::mapOptions((array)$last, $settings->defaultFormat, $settings->defaultQuality);
+        }
+
+        foreach ($overlays as $overlay) {
+            $transformation[] = ['raw' => Transformation::buildLayer($overlay)];
+        }
+
+        return array_values(array_filter($transformation, static fn(array $step): bool => $step !== []));
+    }
 
     /**
      * Extract the signing options (signed/expire) from the option array.

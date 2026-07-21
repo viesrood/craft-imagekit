@@ -59,6 +59,22 @@ class ImagekitTransformer extends Component implements ImageTransformerInterface
 
     public function getTransformUrl(Asset $asset, ImageTransform $imageTransform, bool $immediately): string
     {
+        $service = Plugin::getInstance()->getImagekit();
+
+        // Focal-point-aware path: for a centered crop of an asset with a focal
+        // point, route the Asset itself through the service so its focal-crop
+        // logic applies. An explicit non-center transform position wins over
+        // the focal point (matching Craft's transform semantics).
+        if ($this->shouldUseFocalPoint($asset, $imageTransform)) {
+            $options = $this->outputOptions($imageTransform) + [
+                'mode' => 'crop',
+                'width' => $imageTransform->width,
+                'height' => $imageTransform->height,
+            ];
+
+            return $service->url($asset, $options);
+        }
+
         // Use the untransformed public asset URL as the source (no recursion:
         // without a transform argument getUrl() does not invoke the transformer).
         $source = $asset->getUrl();
@@ -68,7 +84,25 @@ class ImagekitTransformer extends Component implements ImageTransformerInterface
             $source = $asset->getPath();
         }
 
-        return Plugin::getInstance()->getImagekit()->url($source, $this->transformOptions($imageTransform));
+        return $service->url($source, $this->transformOptions($imageTransform));
+    }
+
+    /**
+     * The focal-crop path applies to centered crops with both dimensions set,
+     * on assets that actually have a focal point.
+     */
+    private function shouldUseFocalPoint(Asset $asset, ImageTransform $transform): bool
+    {
+        if ($transform->mode !== 'crop' || !$transform->width || !$transform->height) {
+            return false;
+        }
+
+        $position = $transform->position ?? 'center-center';
+        if ($position !== '' && $position !== 'center-center') {
+            return false;
+        }
+
+        return $asset->getHasFocalPoint();
     }
 
     /**
@@ -87,19 +121,13 @@ class ImagekitTransformer extends Component implements ImageTransformerInterface
      */
     private function transformOptions(ImageTransform $transform): array
     {
-        $options = [];
+        $options = $this->outputOptions($transform);
 
         if ($transform->width !== null) {
             $options['width'] = $transform->width;
         }
         if ($transform->height !== null) {
             $options['height'] = $transform->height;
-        }
-        if ($transform->quality !== null) {
-            $options['quality'] = $transform->quality;
-        }
-        if ($transform->format !== null && $transform->format !== '') {
-            $options['format'] = $transform->format;
         }
 
         // Crop mode.
@@ -116,6 +144,35 @@ class ImagekitTransformer extends Component implements ImageTransformerInterface
             if ($focus !== null) {
                 $options['focus'] = $focus;
             }
+        }
+
+        return $options;
+    }
+
+    /**
+     * Output options shared by both URL paths: quality, format, and Craft's
+     * interlace setting mapped to progressive JPEG output.
+     *
+     * @return array<string,mixed>
+     */
+    private function outputOptions(ImageTransform $transform): array
+    {
+        $options = [];
+
+        if ($transform->quality !== null) {
+            $options['quality'] = $transform->quality;
+        }
+        if ($transform->format !== null && $transform->format !== '') {
+            $options['format'] = $transform->format;
+        }
+
+        // Interlace maps to progressive output. Only meaningful for JPEG; also
+        // applied when the format is unspecified (the source may be a JPEG).
+        $format = $options['format'] ?? null;
+        if (($transform->interlace ?? 'none') !== 'none'
+            && ($format === null || in_array($format, ['jpg', 'jpeg'], true))
+        ) {
+            $options['progressive'] = true;
         }
 
         return $options;
