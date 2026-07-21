@@ -1,32 +1,32 @@
-# ImageKit Toolkit voor Craft CMS
+# ImageKit Toolkit for Craft CMS
 
-Realtime beeldtransformatie en -optimalisatie via [ImageKit.io](https://imagekit.io) - resize,
-formaat en kwaliteit op de ImageKit-CDN. Het origineel blijft ongewijzigd; varianten worden
-per aanvraag gegenereerd en gecached.
+Real-time image transformation and optimization through [ImageKit.io](https://imagekit.io) -
+resizing, format and quality on the ImageKit CDN. The original stays untouched; variants are
+generated on request and cached.
 
-De plugin biedt drie manieren om ImageKit te gebruiken:
+The plugin offers three ways to use ImageKit:
 
-1. Een **native Craft-image-transformer** - Crafts ingebouwde transform-API
-   (`asset.url({ width: 400 })`, named transforms) levert ImageKit-URL's.
-2. **Twig-helpers** `imagekit()` / `imagekit_srcset()` voor directe transformatie-URL's.
-3. Een **CP-hulpprogramma** om bestanden naar de ImageKit Media Library te uploaden.
+1. A **native Craft image transformer** - Craft's built-in transform API
+   (`asset.url({ width: 400 })`, named transforms) returns ImageKit URLs.
+2. **Twig helpers** `imagekit()` / `imagekit_srcset()` for direct transformation URLs.
+3. A **control panel utility** to upload files to the ImageKit Media Library.
 
-## Vereisten
+## Requirements
 
-Craft CMS 5.0.0+ en PHP 8.2+.
+Craft CMS 5.0.0+ and PHP 8.2+.
 
-## Installatie
+## Installation
 
 ```bash
 composer require viesrood/craft-imagekit
 php craft plugin/install imagekit
 ```
 
-Of installeer via **Settings -> Plugins** in de control panel.
+Or install it from **Settings -> Plugins** in the control panel.
 
-## Configuratie
+## Configuration
 
-Zet in `.env`:
+Add to your `.env`:
 
 ```
 IMAGEKIT_PUBLIC_KEY=public_...
@@ -34,38 +34,38 @@ IMAGEKIT_PRIVATE_KEY=private_...
 IMAGEKIT_URL_ENDPOINT=https://ik.imagekit.io/<imagekit_id>
 ```
 
-Defaults (formaat, kwaliteit, ondertekenen, upload-map) zijn per omgeving aan te passen via
-`config/imagekit.php` en zichtbaar onder **Settings -> Plugins -> ImageKit**.
+Defaults (format, quality, signing, upload folder) can be overridden per environment via
+`config/imagekit.php` and are visible under **Settings -> Plugins -> ImageKit Toolkit**.
 
-## Native image-transformer
+## Native image transformer
 
-Stel ImageKit in als transformer op het filesystem/volume waarvan je de afbeeldingen door
-ImageKit wilt laten serveren. Wijs de `Base URL` van dat filesystem naar je ImageKit-endpoint
-(dan wordt de asset-URL een Media Library-pad), of laat 'm naar de bestaande origin wijzen
-(dan gebruikt ImageKit de web-proxy op die origin). Daarna werkt Crafts eigen API via ImageKit:
+Set ImageKit as the transformer on the filesystem/volume whose images you want ImageKit to
+serve. Point that filesystem's `Base URL` at your ImageKit endpoint (so the asset URL becomes a
+Media Library path), or leave it pointing at the existing origin (so ImageKit uses its web proxy
+against that origin). Craft's own API then runs through ImageKit:
 
 ```twig
 <img src="{{ asset.one().url({ width: 400, height: 300, format: 'webp' }) }}" alt="">
 ```
 
-Ondersteunde transform-parameters worden vertaald naar ImageKit: `width`, `height`, `quality`,
-`format` en `mode` (`crop`/`fit`/`stretch`/`letterbox`, incl. `position` als focuspunt en
-`fill` als padkleur bij letterbox).
+Supported transform parameters are translated to ImageKit: `width`, `height`, `quality`,
+`format` and `mode` (`crop`/`fit`/`stretch`/`letterbox`, including `position` as the focus point
+and `fill` as the pad color for letterbox).
 
-> De transformer is opt-in per volume, zodat bestaande, lokaal gegenereerde transforms niet
-> onbedoeld veranderen.
+> The transformer is opt-in per volume, so existing, locally generated transforms are not
+> changed unintentionally.
 
-## Twig-helper
+## Twig helper
 
-`imagekit(bron, opties)` bouwt een transformatie-URL. `bron` mag een **Media Library-pad**
-(`/map/foto.jpg`) of een **bestaande publieke URL** (web-proxy) zijn.
+`imagekit(source, options)` builds a transformation URL. `source` may be a **Media Library path**
+(`/folder/photo.jpg`) or an existing **public URL** (web proxy).
 
 ```twig
-{# als functie #}
+{# as a function #}
 <img src="{{ imagekit('/hero.jpg', { width: 800, format: 'auto', quality: 75 }) }}" alt="">
 
-{# als filter, op een bestaande URL #}
-<img src="{{ 'https://voorbeeld.nl/foto.jpg' | imagekit({ width: 400 }) }}" alt="">
+{# as a filter, on an existing URL #}
+<img src="{{ 'https://example.com/photo.jpg' | imagekit({ width: 400 }) }}" alt="">
 
 {# responsive srcset #}
 <img
@@ -75,30 +75,30 @@ Ondersteunde transform-parameters worden vertaald naar ImageKit: `width`, `heigh
   alt="">
 ```
 
-**Opties** (vriendelijke naam -> ImageKit-parameter): `width`/`w`, `height`/`h`, `format`/`f`
+**Options** (friendly name -> ImageKit parameter): `width`/`w`, `height`/`h`, `format`/`f`
 (`auto`/`webp`/`avif`/`jpg`/`png`), `quality`/`q`, `crop`/`c`, `cropMode`/`cm`, `focus`/`fo`,
 `aspectRatio`/`ar`, `dpr`, `blur`/`bl`, `radius`/`r`, `rotation`/`rt`, `background`/`bg`.
-`format` en `quality` vallen terug op de defaults uit de instellingen.
-`signed: true` (+ optioneel `expire: <seconden>`) ondertekent de URL (HMAC-SHA1).
+`format` and `quality` fall back to the defaults from the settings.
+`signed: true` (plus an optional `expire: <seconds>`) signs the URL (HMAC-SHA1).
 
-`f-auto` levert automatisch WebP/AVIF aan browsers die dat ondersteunen, anders het origineel.
+`f-auto` automatically serves WebP/AVIF to browsers that support it, otherwise the original.
 
-## Uploaden (CP-hulpprogramma)
+## Uploading (control panel utility)
 
-**Utilities -> ImageKit**: upload een lokaal bestand (of plak een URL), kies
-formaat/afmeting/kwaliteit, en krijg de omgezette URL + het Media Library-pad terug om in
-`imagekit()` te gebruiken.
+**Utilities -> ImageKit Toolkit**: upload a local file (or paste a URL), choose
+format/dimensions/quality, and get the transformed URL plus the Media Library path to use in
+`imagekit()`.
 
-## Programmatisch (PHP)
+## Programmatic (PHP)
 
 ```php
 use viesrood\imagekit\Plugin;
 
 $svc = Plugin::getInstance()->getImagekit();
 $url = $svc->url('/hero.jpg', ['width' => 800, 'format' => 'webp']);
-$res = $svc->upload('/pad/naar/foto.jpg');   // ['url','filePath','fileId','width','height','size']
+$res = $svc->upload('/path/to/photo.jpg');   // ['url','filePath','fileId','width','height','size']
 ```
 
-## Licentie
+## License
 
 [MIT](LICENSE.md).

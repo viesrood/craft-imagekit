@@ -4,14 +4,14 @@
 
 ### Added
 
-- Eerste release.
-- Native Craft-image-transformer: registreert ImageKit als transformer via
-  `craft\services\ImageTransforms::EVENT_REGISTER_IMAGE_TRANSFORMERS`, zodat Crafts
-  ingebouwde transform-API (`asset.url({ width: 400 })`) ImageKit-URL's kan opleveren.
-- Twig-helpers `imagekit()` (functie + filter) en `imagekit_srcset()` voor realtime
-  transformatie-URL's op een Media Library-pad of een bestaande (externe) URL (web-proxy).
-- Optioneel ondertekende (signed) URL's met instelbare geldigheidsduur.
-- CP-hulpprogramma om een lokaal bestand of URL naar de ImageKit Media Library te uploaden
-  en de omgezette URL + het Media Library-pad terug te krijgen.
-- Instellingen via env-vars (`IMAGEKIT_PUBLIC_KEY`, `IMAGEKIT_PRIVATE_KEY`,
-  `IMAGEKIT_URL_ENDPOINT`) of `config/imagekit.php`.
+- Initial release.
+- Native Craft image transformer: registers ImageKit as a transformer via
+  `craft\services\ImageTransforms::EVENT_REGISTER_IMAGE_TRANSFORMERS`, so Craft's built-in
+  transform API (`asset.url({ width: 400 })`) can return ImageKit URLs.
+- Twig helpers `imagekit()` (function + filter) and `imagekit_srcset()` for real-time
+  transformation URLs on a Media Library path or an existing (external) URL (web proxy).
+- Optional signed URLs with a configurable expiry.
+- Control panel utility to upload a local file or URL to the ImageKit Media Library and get the
+  transformed URL plus the Media Library path back.
+- Settings via env vars (`IMAGEKIT_PUBLIC_KEY`, `IMAGEKIT_PRIVATE_KEY`,
+  `IMAGEKIT_URL_ENDPOINT`) or `config/imagekit.php`.

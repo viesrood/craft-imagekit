@@ -1,6 +1,6 @@
 {
     "name": "viesrood/craft-imagekit",
-    "description": "Realtime beeldtransformatie en -optimalisatie via ImageKit.io: een native Craft-image-transformer plus Twig-helpers en een upload-hulpprogramma.",
+    "description": "Real-time image transformation and optimization through ImageKit.io: a native Craft image transformer plus Twig helpers and an upload utility.",
     "type": "craft-plugin",
     "license": "MIT",
     "keywords": [
