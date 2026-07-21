@@ -1,31 +1,31 @@
-{# ImageKit-hulpprogramma: upload/URL -> omgezette ImageKit-URL. #}
+{# ImageKit utility: upload/URL -> transformed ImageKit URL. #}
 {% import "_includes/forms.twig" as forms %}
 
 {% if not configured %}
     <p class="warning">
-        ImageKit is nog niet geconfigureerd. Zet <code>IMAGEKIT_PUBLIC_KEY</code>,
-        <code>IMAGEKIT_PRIVATE_KEY</code> en <code>IMAGEKIT_URL_ENDPOINT</code> in je
-        <code>.env</code> (of in <code>config/imagekit.php</code>).
+        ImageKit is not configured yet. Set <code>IMAGEKIT_PUBLIC_KEY</code>,
+        <code>IMAGEKIT_PRIVATE_KEY</code> and <code>IMAGEKIT_URL_ENDPOINT</code> in your
+        <code>.env</code> (or in <code>config/imagekit.php</code>).
     </p>
 {% endif %}
 
 <form id="imagekit-convert" enctype="multipart/form-data">
-    <p>Upload een afbeelding <em>of</em> plak een bestaande (publieke) URL. Kies daarna de gewenste omzetting.</p>
+    <p>Upload an image <em>or</em> paste an existing (public) URL, then choose the transformation.</p>
 
-    {{ forms.field({ label: 'Afbeelding uploaden' }, '<input type="file" name="file" accept="image/*">') }}
+    {{ forms.field({ label: 'Upload image' }, '<input type="file" name="file" accept="image/*">') }}
 
     {{ forms.textField({
-        label: 'of bron-URL',
-        instructions: 'Een publieke afbeeldings-URL of een pad in je ImageKit Media Library.',
+        label: 'or source URL',
+        instructions: 'A public image URL or a path in your ImageKit Media Library.',
         name: 'sourceUrl',
-        placeholder: 'https://... of /map/foto.jpg',
+        placeholder: 'https://... or /folder/photo.jpg',
     }) }}
 
     <div class="flex">
-        {{ forms.textField({ label: 'Breedte (px)', name: 'width', size: 6, type: 'number' }) }}
-        {{ forms.textField({ label: 'Hoogte (px)', name: 'height', size: 6, type: 'number' }) }}
+        {{ forms.textField({ label: 'Width (px)', name: 'width', size: 6, type: 'number' }) }}
+        {{ forms.textField({ label: 'Height (px)', name: 'height', size: 6, type: 'number' }) }}
         {{ forms.selectField({
-            label: 'Formaat',
+            label: 'Format',
             name: 'format',
             options: [
                 { label: 'Auto (WebP/AVIF)', value: 'auto' },
@@ -33,27 +33,27 @@
                 { label: 'AVIF', value: 'avif' },
                 { label: 'JPG', value: 'jpg' },
                 { label: 'PNG', value: 'png' },
-                { label: 'Origineel laten', value: '' },
+                { label: 'Keep original', value: '' },
             ],
             value: 'auto',
         }) }}
-        {{ forms.textField({ label: 'Kwaliteit (1-100)', name: 'quality', size: 4, type: 'number', value: 80 }) }}
+        {{ forms.textField({ label: 'Quality (1-100)', name: 'quality', size: 4, type: 'number', value: 80 }) }}
     </div>
 
-    {{ forms.lightswitchField({ label: 'URL ondertekenen (signed)', name: 'signed' }) }}
+    {{ forms.lightswitchField({ label: 'Sign URL (signed)', name: 'signed' }) }}
 
     <div class="buttons">
-        <button type="submit" class="btn submit">Omzetten</button>
+        <button type="submit" class="btn submit">Transform</button>
         <div class="spinner hidden"></div>
     </div>
 </form>
 
 <div id="imagekit-result" class="hidden" style="margin-top:24px;">
     <hr>
-    <h2>Resultaat</h2>
+    <h2>Result</h2>
     <p><img id="imagekit-preview" src="" alt="" style="max-width:100%;height:auto;border:1px solid #eee;border-radius:4px;"></p>
-    {{ forms.textField({ label: 'Omgezette ImageKit-URL', id: 'imagekit-url', name: 'resultUrl', readonly: true }) }}
-    {{ forms.textField({ label: 'Media Library-pad (voor imagekit())', id: 'imagekit-path', name: 'resultPath', readonly: true }) }}
+    {{ forms.textField({ label: 'Transformed ImageKit URL', id: 'imagekit-url', name: 'resultUrl', readonly: true }) }}
+    {{ forms.textField({ label: 'Media Library path (for imagekit())', id: 'imagekit-path', name: 'resultPath', readonly: true }) }}
 </div>
 
 <p id="imagekit-error" class="error hidden" style="margin-top:16px;"></p>
@@ -78,7 +78,7 @@
             .then(function (response) {
                 var d = response.data;
                 if (!d.success) {
-                    errorEl.textContent = d.error || 'Er ging iets mis.';
+                    errorEl.textContent = d.error || 'Something went wrong.';
                     errorEl.classList.remove('hidden');
                     return;
                 }
@@ -88,7 +88,7 @@
                 result.classList.remove('hidden');
             })
             .catch(function (err) {
-                var msg = (err && err.response && err.response.data && err.response.data.error) || 'Verzoek mislukt.';
+                var msg = (err && err.response && err.response.data && err.response.data.error) || 'Request failed.';
                 errorEl.textContent = msg;
                 errorEl.classList.remove('hidden');
             })

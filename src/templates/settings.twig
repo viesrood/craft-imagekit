@@ -1,9 +1,9 @@
-{# Alleen-lezen overzicht van de ImageKit-configuratie. #}
+{# Read-only overview of the ImageKit configuration. #}
 {% import "_includes/forms.twig" as forms %}
 
 <p>
-    De ImageKit-credentials worden uit env-vars gelezen (of uit <code>config/imagekit.php</code>).
-    Zet in je <code>.env</code>:
+    The ImageKit credentials are read from environment variables (or from
+    <code>config/imagekit.php</code>). Add to your <code>.env</code>:
 </p>
 
 <pre>IMAGEKIT_PUBLIC_KEY=public_...
@@ -27,7 +27,7 @@ IMAGEKIT_URL_ENDPOINT=https://ik.imagekit.io/&lt;imagekit_id&gt;</pre>
 }) }}
 
 {{ forms.autosuggestField({
-    label: 'URL-endpoint',
+    label: 'URL endpoint',
     id: 'urlEndpoint',
     name: 'settings[urlEndpoint]',
     suggestEnvVars: true,
@@ -35,7 +35,7 @@ IMAGEKIT_URL_ENDPOINT=https://ik.imagekit.io/&lt;imagekit_id&gt;</pre>
 }) }}
 
 {{ forms.selectField({
-    label: 'Standaard-formaat',
+    label: 'Default format',
     id: 'defaultFormat',
     name: 'settings[defaultFormat]',
     options: [
@@ -44,13 +44,13 @@ IMAGEKIT_URL_ENDPOINT=https://ik.imagekit.io/&lt;imagekit_id&gt;</pre>
         { label: 'AVIF', value: 'avif' },
         { label: 'JPG', value: 'jpg' },
         { label: 'PNG', value: 'png' },
-        { label: 'Geen', value: '' },
+        { label: 'None', value: '' },
     ],
     value: settings.defaultFormat,
 }) }}
 
 {{ forms.textField({
-    label: 'Standaard-kwaliteit (1-100)',
+    label: 'Default quality (1-100)',
     id: 'defaultQuality',
     name: 'settings[defaultQuality]',
     type: 'number',
@@ -59,14 +59,14 @@ IMAGEKIT_URL_ENDPOINT=https://ik.imagekit.io/&lt;imagekit_id&gt;</pre>
 }) }}
 
 {{ forms.lightswitchField({
-    label: 'URL\'s standaard ondertekenen',
+    label: 'Sign URLs by default',
     id: 'signUrls',
     name: 'settings[signUrls]',
     on: settings.signUrls,
 }) }}
 
 {{ forms.textField({
-    label: 'Upload-map (Media Library)',
+    label: 'Upload folder (Media Library)',
     id: 'uploadFolder',
     name: 'settings[uploadFolder]',
     value: settings.uploadFolder,
