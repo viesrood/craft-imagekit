@@ -8,6 +8,7 @@ use Craft;
 use craft\base\Component;
 use craft\elements\Asset;
 use craft\helpers\App;
+use craft\helpers\Html;
 use ImageKit\ImageKit as ImageKitClient;
 use viesrood\imagekit\helpers\Transformation;
 use viesrood\imagekit\models\Settings;
@@ -74,6 +75,12 @@ class Imagekit extends Component
         if ($settings->getParsedUrlEndpoint() === '') {
             $this->warnUnconfigured();
             return $asset->getUrl($this->assetTransformOptions($options)) ?? '';
+        }
+
+        // Opt-in devMode fallback: serve the untransformed asset URL locally,
+        // e.g. when the local origin is not reachable for ImageKit's web proxy.
+        if ($this->useNativeFallback()) {
+            return $asset->getUrl() ?? '';
         }
 
         $sign = $this->extractSignParams($options, $settings);
@@ -247,11 +254,19 @@ class Imagekit extends Component
      * Build a srcset string for responsive images.
      *
      * @param Asset|string $source
-     * @param int[] $widths
+     * @param int[]|null $widths Null falls back to the defaultSrcsetWidths setting.
      * @param array<string,mixed> $options
      */
-    public function srcset(Asset|string $source, array $widths, array $options = []): string
+    public function srcset(Asset|string $source, ?array $widths = null, array $options = []): string
     {
+        // In fallback mode an asset resolves to a single untransformed URL, so
+        // a srcset would repeat the same URL for every width. Skip it.
+        if ($source instanceof Asset && $this->useNativeFallback()) {
+            return '';
+        }
+
+        $widths ??= $this->settings()->getDefaultSrcsetWidths();
+
         $parts = [];
         foreach ($widths as $width) {
             $width = (int)$width;
@@ -263,6 +278,148 @@ class Imagekit extends Component
         }
 
         return implode(', ', $parts);
+    }
+
+    /**
+     * Render a complete <img> tag for an asset: src, srcset, sizes, intrinsic
+     * width/height, alt, lazy loading and async decoding, with an automatic
+     * fallback to the plain asset URL when the plugin is not configured or the
+     * devMode fallback is active.
+     *
+     * Tag-level options (everything else is passed on to url()/srcset()):
+     * - srcset:     int[] of widths (default: the defaultSrcsetWidths setting),
+     *               or false to disable srcset/sizes.
+     * - sizes:      the sizes attribute (default '100vw').
+     * - alt:        alt text (default: the asset's alt, falling back to its title).
+     * - loading:    loading attribute (default 'lazy'; false to omit).
+     * - decoding:   decoding attribute (default 'async'; false to omit).
+     * - class:      class attribute.
+     * - attributes: extra attribute map, merged last (may override the above).
+     *
+     * @param array<string,mixed> $options
+     */
+    public function imgTag(?Asset $asset, array $options = []): string
+    {
+        if ($asset === null) {
+            return '';
+        }
+
+        $settings = $this->settings();
+
+        $srcsetWidths = $options['srcset'] ?? $settings->getDefaultSrcsetWidths();
+        $sizes = (string)($options['sizes'] ?? '100vw');
+        $alt = (string)($options['alt'] ?? ($asset->alt ?? $asset->title ?? ''));
+        $loading = $options['loading'] ?? 'lazy';
+        $decoding = $options['decoding'] ?? 'async';
+        $class = $options['class'] ?? null;
+        $extraAttributes = is_array($options['attributes'] ?? null) ? $options['attributes'] : [];
+        unset(
+            $options['srcset'],
+            $options['sizes'],
+            $options['alt'],
+            $options['loading'],
+            $options['decoding'],
+            $options['class'],
+            $options['attributes'],
+        );
+
+        $fallback = !$this->isConfigured() || $this->useNativeFallback();
+
+        $attributes = [];
+
+        if ($fallback) {
+            $attributes['src'] = (string)$asset->getUrl();
+            [$width, $height] = $this->intrinsicDimensions($asset, []);
+        } else {
+            $srcOptions = $options;
+            if (!isset($srcOptions['width']) && is_array($srcsetWidths) && $srcsetWidths !== []) {
+                $srcOptions['width'] = max(array_map('intval', $srcsetWidths));
+            }
+            $attributes['src'] = $this->url($asset, $srcOptions);
+
+            if (is_array($srcsetWidths) && count($srcsetWidths) > 1) {
+                $attributes['srcset'] = $this->srcset($asset, $srcsetWidths, $options);
+                $attributes['sizes'] = $sizes;
+            }
+
+            [$width, $height] = $this->intrinsicDimensions($asset, $options);
+        }
+
+        $attributes['alt'] = $alt;
+
+        if ($width && $height) {
+            $attributes['width'] = (string)$width;
+            $attributes['height'] = (string)$height;
+        }
+        if ($loading !== false && $loading !== null && $loading !== '') {
+            $attributes['loading'] = (string)$loading;
+        }
+        if ($decoding !== false && $decoding !== null && $decoding !== '') {
+            $attributes['decoding'] = (string)$decoding;
+        }
+        if ($class !== null && $class !== '') {
+            $attributes['class'] = $class;
+        }
+
+        $attributes = array_merge($attributes, $extraAttributes);
+
+        return Html::tag('img', '', $attributes);
+    }
+
+    /**
+     * The intrinsic width/height attributes for an <img> tag: the target
+     * dimensions when the options force a different aspect ratio (crop with
+     * both dimensions, or aspectRatio), otherwise dimensions derived from the
+     * asset's own ratio.
+     *
+     * @param array<string,mixed> $options
+     * @return array{0: ?int, 1: ?int}
+     */
+    private function intrinsicDimensions(Asset $asset, array $options): array
+    {
+        $assetW = $asset->width ? (int)$asset->width : null;
+        $assetH = $asset->height ? (int)$asset->height : null;
+
+        $optW = (int)($options['width'] ?? 0);
+        $optH = (int)($options['height'] ?? 0);
+
+        if ($optW > 0 && $optH > 0) {
+            return [$optW, $optH];
+        }
+
+        $aspectRatio = (string)($options['aspectRatio'] ?? $options['ar'] ?? '');
+        if ($aspectRatio !== ''
+            && preg_match('/^(\d+)[-_:x](\d+)$/', $aspectRatio, $matches)
+            && (int)$matches[1] > 0
+            && (int)$matches[2] > 0
+        ) {
+            $baseW = $optW ?: $assetW;
+            if ($baseW) {
+                return [$baseW, (int)round($baseW * (int)$matches[2] / (int)$matches[1])];
+            }
+        }
+
+        if (!$assetW || !$assetH) {
+            return [$assetW, $assetH];
+        }
+
+        if ($optW > 0) {
+            return [$optW, (int)round($optW * $assetH / $assetW)];
+        }
+        if ($optH > 0) {
+            return [(int)round($optH * $assetW / $assetH), $optH];
+        }
+
+        return [$assetW, $assetH];
+    }
+
+    /**
+     * Whether the opt-in devMode fallback (native asset URLs) is active.
+     */
+    private function useNativeFallback(): bool
+    {
+        return $this->settings()->useNativeInDevMode
+            && Craft::$app->getConfig()->getGeneral()->devMode;
     }
 
     /**

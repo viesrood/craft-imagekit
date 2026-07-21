@@ -21,6 +21,8 @@ use Twig\TwigFunction;
  * Asset:    {{ imagekit(entry.image.one(), { mode: 'crop', width: 720, height: 480 }) }}
  * Filter:   {{ 'https://example.com/photo.jpg' | imagekit({ width: 800 }) }}
  * Srcset:   <img srcset="{{ imagekit_srcset('/photo.jpg', [400, 800, 1200]) }}">
+ * Img tag:  {{ imagekit_img(entry.image.one(), { sizes: '50vw', class: 'w-full' }) }}
+ * Check:    {% if imagekit_configured() %}...{% endif %}
  */
 class ImagekitExtension extends AbstractExtension
 {
@@ -29,6 +31,8 @@ class ImagekitExtension extends AbstractExtension
         return [
             new TwigFunction('imagekit', [$this, 'url']),
             new TwigFunction('imagekit_srcset', [$this, 'srcset']),
+            new TwigFunction('imagekit_img', [$this, 'imgTag'], ['is_safe' => ['html']]),
+            new TwigFunction('imagekit_configured', [$this, 'isConfigured']),
         ];
     }
 
@@ -50,11 +54,31 @@ class ImagekitExtension extends AbstractExtension
 
     /**
      * @param Asset|string $source
-     * @param int[] $widths
+     * @param int[]|null $widths Null falls back to the defaultSrcsetWidths setting.
      * @param array<string,mixed> $options
      */
-    public function srcset(Asset|string $source, array $widths, array $options = []): string
+    public function srcset(Asset|string $source, ?array $widths = null, array $options = []): string
     {
         return Plugin::getInstance()->getImagekit()->srcset($source, $widths, $options);
+    }
+
+    /**
+     * Render a complete <img> tag for an asset (src, srcset, sizes, intrinsic
+     * dimensions, lazy loading) with automatic fallback when unconfigured or
+     * in devMode (see the useNativeInDevMode setting).
+     *
+     * @param array<string,mixed> $options
+     */
+    public function imgTag(?Asset $asset, array $options = []): string
+    {
+        return Plugin::getInstance()->getImagekit()->imgTag($asset, $options);
+    }
+
+    /**
+     * Whether the plugin has a complete ImageKit configuration.
+     */
+    public function isConfigured(): bool
+    {
+        return Plugin::getInstance()->getImagekit()->isConfigured();
     }
 }
